@@ -1,0 +1,14 @@
+build/
+.vs/
+.vscode/*
+!.vscode/settings.json
+.idea/
+CMakeUserPresets.json
+*.user
+vcpkg_installed/
+compile_commands.json
+.cache/
+*.db
+*.sqlite
+*.sqlite3
+rubbish/
