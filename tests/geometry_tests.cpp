@@ -4,11 +4,14 @@
 #include <cmath>
 
 #include "BoundingBox.hpp"
+#include "Ellipsoid.hpp"
+#include "Quadric.hpp"
 #include "Transform.hpp"
 #include "Vec3.hpp"
 #include "test_utils.hpp"
 
 using qi::geometry::BoundingBox;
+using qi::geometry::Ellipsoid;
 using qi::geometry::Quat;
 using qi::geometry::Transform;
 using qi::geometry::Vec3;
@@ -89,4 +92,46 @@ TEST(GeometryBasics, TransformToMatrixMatchesApply) {
     EXPECT_NEAR(q.x(), qh.x(), qi::test::kEpsTight);
     EXPECT_NEAR(q.y(), qh.y(), qi::test::kEpsTight);
     EXPECT_NEAR(q.z(), qh.z(), qi::test::kEpsTight);
+}
+
+// --- Ellipsoid ---
+
+TEST(EllipsoidTest, ImplicitZeroOnParametricSurface) {
+    Ellipsoid e(2.0, 3.0, 4.0);
+    qi::test::expectParametricLiesOnImplicit(e, qi::test::kEpsTight);
+}
+
+TEST(EllipsoidTest, ImplicitSignsInsideOutside) {
+    Ellipsoid e(2.0, 3.0, 4.0);
+    EXPECT_LT(e.implicit(Vec3(0, 0, 0)), 0.0);     // inside
+    EXPECT_GT(e.implicit(Vec3(10, 0, 0)), 0.0);    // outside
+    EXPECT_NEAR(e.implicit(Vec3(2, 0, 0)), 0.0, qi::test::kEpsTight);
+    EXPECT_NEAR(e.implicit(Vec3(0, 0, 4)), 0.0, qi::test::kEpsTight);
+}
+
+TEST(EllipsoidTest, TransformDoesNotBreakConsistency) {
+    Ellipsoid e(2.0, 3.0, 4.0);
+    Quat rot(Eigen::AngleAxisd(0.7, Vec3(1, 1, 0).normalized()));
+    e.setTransform(Transform(Vec3(5, -2, 1), rot));
+    qi::test::expectParametricLiesOnImplicit(e, qi::test::kEpsTight);
+}
+
+TEST(EllipsoidTest, CloneCopiesParametersAndTransform) {
+    Ellipsoid e(2.0, 3.0, 4.0);
+    Quat rot(Eigen::AngleAxisd(0.3, Vec3::UnitX()));
+    e.setTransform(Transform(Vec3(1, 1, 1), rot));
+
+    auto cp = e.clone();
+    auto* ep = dynamic_cast<Ellipsoid*>(cp.get());
+    ASSERT_NE(ep, nullptr);
+    EXPECT_DOUBLE_EQ(ep->a(), 2.0);
+    EXPECT_DOUBLE_EQ(ep->b(), 3.0);
+    EXPECT_DOUBLE_EQ(ep->c(), 4.0);
+    EXPECT_NEAR((ep->transform().translation() - e.transform().translation()).norm(), 0.0,
+                qi::test::kEpsTight);
+}
+
+TEST(EllipsoidTest, TypeName) {
+    Ellipsoid e(1, 1, 1);
+    EXPECT_EQ(e.typeName(), "ellipsoid");
 }
