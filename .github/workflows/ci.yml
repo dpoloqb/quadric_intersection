@@ -58,8 +58,6 @@ jobs:
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgGitCommitId: "c8696863d371ab7f46e213d8f5ca923c4aef2a00"
 
       - name: Configure
         run: cmake --preset ${{ matrix.preset }}
