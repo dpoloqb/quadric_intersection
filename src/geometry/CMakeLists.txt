@@ -23,6 +23,8 @@ add_library(qi_geometry STATIC
     HyperbolicCylinder.hpp
     ParabolicCylinder.cpp
     ParabolicCylinder.hpp
+    QuadricFactory.cpp
+    QuadricFactory.hpp
 )
 target_include_directories(qi_geometry PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(qi_geometry PUBLIC Eigen3::Eigen)

@@ -56,14 +56,14 @@ jobs:
           arch: win64_msvc2019_64
           cache: true
 
-      - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v11
+      - name: Setup vcpkg (use preinstalled)
+  	shell: bash
+  	run: |
+    	  echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> $GITHUB_ENV
 
       - name: Configure
         run: cmake --preset ${{ matrix.preset }}
-        env:
-          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
-
+        
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
 

@@ -14,6 +14,7 @@
 #include "HyperboloidTwoSheet.hpp"
 #include "ParabolicCylinder.hpp"
 #include "Quadric.hpp"
+#include "QuadricFactory.hpp"
 #include "Transform.hpp"
 #include "Vec3.hpp"
 #include "test_utils.hpp"
@@ -344,4 +345,54 @@ TEST(ParabolicCylinderTest, TypeName) {
     ParabolicCylinder cyl(1.0);
     EXPECT_EQ(cyl.typeName(), "parabolic_cylinder");
     EXPECT_DOUBLE_EQ(cyl.p(), 1.0);
+}
+
+// ---- QuadricFactory ----
+
+TEST(QuadricFactoryTest, CreatesEachKnownTypeWithCorrectTypeName) {
+    qi::geometry::QuadricParams params{2.0, 3.0, 4.0, 1.5};
+    for (const auto& type : qi::geometry::knownQuadricTypes()) {
+        auto q = qi::geometry::createQuadric(type, params);
+        ASSERT_NE(q, nullptr) << "factory returned null for type=" << type;
+        EXPECT_EQ(q->typeName(), type);
+    }
+}
+
+TEST(QuadricFactoryTest, KnownTypesContainsAllNine) {
+    auto types = qi::geometry::knownQuadricTypes();
+    EXPECT_EQ(types.size(), 9u);
+}
+
+TEST(QuadricFactoryTest, EllipsoidPropagatesParams) {
+    qi::geometry::QuadricParams params{2.5, 3.5, 4.5, 0.0};
+    auto q = qi::geometry::createQuadric("ellipsoid", params);
+    auto* e = dynamic_cast<Ellipsoid*>(q.get());
+    ASSERT_NE(e, nullptr);
+    EXPECT_DOUBLE_EQ(e->a(), 2.5);
+    EXPECT_DOUBLE_EQ(e->b(), 3.5);
+    EXPECT_DOUBLE_EQ(e->c(), 4.5);
+}
+
+TEST(QuadricFactoryTest, ParabolicCylinderUsesPParam) {
+    qi::geometry::QuadricParams params{};
+    params.p = 7.5;
+    auto q = qi::geometry::createQuadric("parabolic_cylinder", params);
+    auto* pc = dynamic_cast<ParabolicCylinder*>(q.get());
+    ASSERT_NE(pc, nullptr);
+    EXPECT_DOUBLE_EQ(pc->p(), 7.5);
+}
+
+TEST(QuadricFactoryTest, ProducedQuadricsPassImplicitParametricInvariant) {
+    qi::geometry::QuadricParams params{2.0, 3.0, 4.0, 1.5};
+    for (const auto& type : qi::geometry::knownQuadricTypes()) {
+        auto q = qi::geometry::createQuadric(type, params);
+        ASSERT_NE(q, nullptr);
+        qi::test::expectParametricLiesOnImplicit(*q, qi::test::kEpsTight);
+    }
+}
+
+TEST(QuadricFactoryTest, UnknownTypeThrows) {
+    qi::geometry::QuadricParams params{};
+    EXPECT_THROW(qi::geometry::createQuadric("nonsense", params), std::invalid_argument);
+    EXPECT_THROW(qi::geometry::createQuadric("", params), std::invalid_argument);
 }
