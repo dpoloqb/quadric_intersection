@@ -2,8 +2,8 @@
 
 #include <string>
 
-namespace qi::persistence {
+namespace qi::storage {
 
 std::string moduleName();
 
-}  // namespace qi::persistence
+}  // namespace qi::storage

@@ -69,7 +69,7 @@ ctest --preset linux-gcc-debug
 | `src/mesh/`         | Mesh, Polyline, Segment (чистый C++)                  |
 | `src/triangulation/`| Marching Cubes и параметрический триангулятор         |
 | `src/intersection/` | Пересечение треугольников, сборка полилиний           |
-| `src/storage/`      | Репозиторий SQLite (`qi::persistence`, Qt6::Sql)      |
+| `src/storage/`      | Репозиторий SQLite (`qi::storage`, Qt6::Sql)          |
 | `src/experiment/`   | Оркестрация, конфиг, `ExperimentResult`               |
 | `src/ui/`           | Qt-виджеты, главное окно                              |
 | `tests/`            | Юнит- и интеграционные тесты (GoogleTest)             |

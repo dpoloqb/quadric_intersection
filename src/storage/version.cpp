@@ -1,7 +1,7 @@
 #include "version.hpp"
 
-namespace qi::persistence {
+namespace qi::storage {
 
-std::string moduleName() { return "persistence"; }
+std::string moduleName() { return "storage"; }
 
-}  // namespace qi::persistence
+}  // namespace qi::storage

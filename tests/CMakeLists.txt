@@ -3,11 +3,13 @@ include(GoogleTest)
 
 add_executable(qi_tests
     geometry_tests.cpp
+    mesh_tests.cpp
 )
 target_link_libraries(qi_tests
     PRIVATE
         GTest::gtest
         GTest::gtest_main
         qi_geometry
+        qi_mesh
 )
 gtest_discover_tests(qi_tests)
