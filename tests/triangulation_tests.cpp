@@ -8,6 +8,8 @@
 #include "MarchingCubes.hpp"
 #include "MarchingCubesParams.hpp"
 #include "Mesh.hpp"
+#include "ParametricParams.hpp"
+#include "ParametricTriangulator.hpp"
 #include "QuadricFactory.hpp"
 #include "Vec3.hpp"
 #include "test_utils.hpp"
@@ -20,6 +22,8 @@ using qi::geometry::Vec3;
 using qi::mesh::Mesh;
 using qi::triangulation::MarchingCubes;
 using qi::triangulation::MarchingCubesParams;
+using qi::triangulation::ParametricParams;
+using qi::triangulation::ParametricTriangulator;
 
 namespace {
 
@@ -125,4 +129,67 @@ TEST(MarchingCubesTest, ResolutionOneStillProducesValidMesh) {
     // With resolution=1 the cube fully encloses the sphere; depending on corner
     // signs, the algorithm may produce 0 triangles. Either way, no crash.
     SUCCEED();
+}
+
+// ---- ParametricTriangulator ----
+
+TEST(ParametricTriangulatorTest, MethodNameIsStable) {
+    ParametricTriangulator pt;
+    EXPECT_EQ(pt.methodName(), "parametric");
+}
+
+TEST(ParametricTriangulatorTest, EllipsoidExactOnSurface) {
+    Ellipsoid e(2.0, 3.0, 4.0);
+    // Bbox big enough that no clipping happens — vertices stay parametric.
+    BoundingBox bbox(Vec3(-10, -10, -10), Vec3(10, 10, 10));
+    ParametricTriangulator pt(ParametricParams{40, 40});
+
+    Mesh mesh = pt.triangulate(e, bbox);
+    EXPECT_GT(mesh.triangleCount(), 0u);
+    EXPECT_TRUE(qi::mesh::isValidMesh(mesh));
+    qi::test::expectMeshLiesOnSurface(mesh, e, qi::test::kEpsTight);
+    qi::test::expectMeshInsideBbox(mesh, bbox, qi::test::kEpsTight);
+}
+
+TEST(ParametricTriangulatorTest, AllNineTypesProduceNonEmptyMesh) {
+    // Bbox big enough to contain every default-parameter surface fully:
+    // EllipticParaboloid reaches z=v²=25 at v=5; HyperbolicParaboloid reaches
+    // |z|=u²+v²=50; ParabolicCylinder reaches x=u²/2=12.5. Using [-30,30]³ to
+    // ensure no clipping happens, so vertices stay parametric (exact).
+    BoundingBox bbox(Vec3(-30, -30, -30), Vec3(30, 30, 30));
+    ParametricTriangulator pt(ParametricParams{30, 30});
+    QuadricParams params{1.0, 1.0, 1.0, 1.0};
+
+    for (const auto& type : qi::geometry::knownQuadricTypes()) {
+        auto q = qi::geometry::createQuadric(type, params);
+        ASSERT_NE(q, nullptr);
+        Mesh mesh = pt.triangulate(*q, bbox);
+        EXPECT_GT(mesh.triangleCount(), 0u) << "empty mesh for type=" << type;
+        EXPECT_TRUE(qi::mesh::isValidMesh(mesh)) << "invalid mesh for type=" << type;
+        qi::test::expectMeshInsideBbox(mesh, bbox, qi::test::kEpsTight);
+        qi::test::expectMeshLiesOnSurface(mesh, *q, qi::test::kEpsTight);
+    }
+}
+
+TEST(ParametricTriangulatorTest, ClippedByBboxKeepsVerticesInside) {
+    // Cylinder is "infinite" in z (vRange=[-10,10]); bbox is small.
+    auto cyl = qi::geometry::createQuadric("elliptic_cylinder",
+                                            qi::geometry::QuadricParams{1.0, 1.0, 1.0, 1.0});
+    BoundingBox bbox(Vec3(-2, -2, -1), Vec3(2, 2, 1));
+    ParametricTriangulator pt(ParametricParams{40, 60});
+
+    Mesh mesh = pt.triangulate(*cyl, bbox);
+    EXPECT_GT(mesh.triangleCount(), 0u);
+    EXPECT_TRUE(qi::mesh::isValidMesh(mesh));
+    qi::test::expectMeshInsideBbox(mesh, bbox, qi::test::kEpsLoose);
+}
+
+TEST(ParametricTriangulatorTest, HigherStepsGiveMoreTriangles) {
+    Ellipsoid e(1.0, 1.0, 1.0);
+    BoundingBox bbox(Vec3(-10, -10, -10), Vec3(10, 10, 10));
+
+    Mesh coarse = ParametricTriangulator(ParametricParams{20, 20}).triangulate(e, bbox);
+    Mesh fine   = ParametricTriangulator(ParametricParams{60, 60}).triangulate(e, bbox);
+
+    EXPECT_GT(fine.triangleCount(), coarse.triangleCount());
 }
