@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include "BoundingBox.hpp"
+#include "Mesh.hpp"
 #include "Quadric.hpp"
 #include "Vec3.hpp"
 
@@ -32,6 +34,31 @@ inline void expectParametricLiesOnImplicit(const qi::geometry::Quadric& q,
                 << q.typeName() << " u=" << u << " v=" << v
                 << " p=" << p.transpose();
         }
+    }
+}
+
+// Checks that every vertex of the mesh lies on the quadric implicit surface
+// within the given tolerance.
+inline void expectMeshLiesOnSurface(const qi::mesh::Mesh& mesh,
+                                    const qi::geometry::Quadric& quadric,
+                                    double tolerance) {
+    for (const auto& v : mesh.vertices) {
+        EXPECT_NEAR(quadric.implicit(v), 0.0, tolerance)
+            << quadric.typeName() << " vertex " << v.transpose() << " not on surface";
+    }
+}
+
+// Checks that every vertex of the mesh lies inside the bounding box (with optional slack).
+inline void expectMeshInsideBbox(const qi::mesh::Mesh& mesh,
+                                 const qi::geometry::BoundingBox& bbox,
+                                 double slack = 0.0) {
+    for (const auto& v : mesh.vertices) {
+        EXPECT_GE(v.x(), bbox.min().x() - slack);
+        EXPECT_LE(v.x(), bbox.max().x() + slack);
+        EXPECT_GE(v.y(), bbox.min().y() - slack);
+        EXPECT_LE(v.y(), bbox.max().y() + slack);
+        EXPECT_GE(v.z(), bbox.min().z() - slack);
+        EXPECT_LE(v.z(), bbox.max().z() + slack);
     }
 }
 
