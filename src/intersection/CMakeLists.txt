@@ -1,4 +1,6 @@
 add_library(qi_intersection STATIC
+    Orient3d.cpp
+    Orient3d.hpp
     TriangleTriangle.cpp
     TriangleTriangle.hpp
 )
