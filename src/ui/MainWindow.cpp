@@ -7,6 +7,7 @@
 #include "DatabaseManager.hpp"
 #include "ExperimentRepository.hpp"
 #include "ExperimentTab.hpp"
+#include "ResultsTab.hpp"
 #include "ui_MainWindow.h"
 
 namespace qi::ui {
@@ -22,18 +23,25 @@ MainWindow::MainWindow(QWidget* parent)
     }
 
     experimentTab_ = new ExperimentTab(this);
+    resultsTab_ = new ResultsTab(this);
     if (repo_) {
         experimentTab_->setRepository(repo_.get());
+        resultsTab_->setRepository(repo_.get());
+        resultsTab_->setDatabase(db_->database());
     }
 
-    auto* page = ui_->experimentTab;
-    auto* layout = new QVBoxLayout(page);
-    layout->addWidget(experimentTab_);
-    layout->setContentsMargins(0, 0, 0, 0);
+    auto installInto = [](QWidget* page, QWidget* w) {
+        auto* layout = new QVBoxLayout(page);
+        layout->addWidget(w);
+        layout->setContentsMargins(0, 0, 0, 0);
+    };
+    installInto(ui_->experimentTab, experimentTab_);
+    installInto(ui_->resultsTab, resultsTab_);
 
     connect(experimentTab_, &ExperimentTab::experimentFinished, this,
             [this](int id) {
                 if (id > 0) {
+                    resultsTab_->refresh();
                     QMessageBox::information(
                         this, tr("Experiment saved"),
                         tr("Saved as id %1").arg(id));
@@ -42,6 +50,8 @@ MainWindow::MainWindow(QWidget* parent)
                                              tr("Run completed (not persisted)"));
                 }
             });
+    connect(resultsTab_, &ResultsTab::experimentDeleted, this,
+            [](int /*id*/) { /* placeholder for future view tab refresh */ });
 }
 
 MainWindow::~MainWindow() = default;

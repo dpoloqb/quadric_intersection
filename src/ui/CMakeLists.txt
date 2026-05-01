@@ -8,6 +8,8 @@ add_library(qi_ui STATIC
     MainWindow.ui
     QuadricParamsWidget.cpp
     QuadricParamsWidget.hpp
+    ResultsTab.cpp
+    ResultsTab.hpp
     SurfaceEditorWidget.cpp
     SurfaceEditorWidget.hpp
     TransformWidget.cpp
@@ -23,6 +25,7 @@ target_link_libraries(qi_ui
         Qt6::Widgets
         Qt6::OpenGLWidgets
         Qt6::Concurrent
+        Qt6::Sql
         qi_geometry
         qi_experiment
         qi_storage

@@ -12,7 +12,9 @@
 #include "ExperimentConfig.hpp"
 #include "ExperimentRepository.hpp"
 #include "ExperimentTab.hpp"
+#include "ExperimentResult.hpp"
 #include "QuadricParamsWidget.hpp"
+#include "ResultsTab.hpp"
 #include "SurfaceEditorWidget.hpp"
 #include "Transform.hpp"
 #include "TransformWidget.hpp"
@@ -21,7 +23,9 @@
 #include "test_utils.hpp"
 
 using qi::experiment::ExperimentResult;
+using qi::experiment::IntersectionRecord;
 using qi::experiment::SurfaceConfig;
+using qi::experiment::SurfaceRecord;
 using qi::geometry::BoundingBox;
 using qi::geometry::QuadricParams;
 using qi::geometry::Quat;
@@ -32,6 +36,7 @@ using qi::storage::ExperimentRepository;
 using qi::ui::BoundingBoxWidget;
 using qi::ui::ExperimentTab;
 using qi::ui::QuadricParamsWidget;
+using qi::ui::ResultsTab;
 using qi::ui::SurfaceEditorWidget;
 using qi::ui::TransformWidget;
 using qi::ui::TriangulationParamsWidget;
@@ -238,4 +243,109 @@ TEST(ExperimentTabTest, RunSyncSavedToRepositoryWhenAttached) {
     int id = repo.saveExperiment(result);
     EXPECT_GT(id, 0);
     EXPECT_EQ(repo.listExperiments().size(), 1u);
+}
+
+// ---- ResultsTab ----
+
+namespace {
+
+// Creates a tiny ExperimentResult with N surfaces and C(N,2) intersections —
+// no actual mesh work, just data for the DB.
+ExperimentResult makeStubExperiment(int surfaces, const QString& notes) {
+    ExperimentResult exp;
+    exp.createdAt = "2026-05-01T00:00:00Z";
+    exp.bbox = qi::geometry::BoundingBox(Vec3(-1, -1, -1), Vec3(1, 1, 1));
+    exp.notes = notes;
+    for (int i = 0; i < surfaces; ++i) {
+        SurfaceRecord s;
+        s.indexInExperiment = i;
+        s.type = (i % 2 == 0) ? "ellipsoid" : "cone";
+        s.params = {1.0 + i, 1.0, 1.0, 1.0};
+        s.transform = Transform::identity();
+        s.triangulationMethod = "parametric";
+        s.uSteps = 10;
+        s.vSteps = 10;
+        s.trianglesCount = 200;
+        s.timeTriangulationMs = 1.0;
+        exp.surfaces.push_back(s);
+    }
+    for (int i = 0; i < surfaces; ++i) {
+        for (int j = i + 1; j < surfaces; ++j) {
+            IntersectionRecord r;
+            r.surface1Index = i;
+            r.surface2Index = j;
+            r.intersectionMethod = "bvh";
+            r.timeIntersectionMs = 0.5;
+            r.segmentsCount = 100;
+            r.polylinesCount = 1;
+            exp.intersections.push_back(r);
+        }
+    }
+    return exp;
+}
+
+}  // namespace
+
+TEST(ResultsTabTest, EmptyDatabaseShowsZeroRows) {
+    TempDbForTab tdb;
+    DatabaseManager dm(tdb.path());
+    ASSERT_TRUE(dm.initialize());
+    ExperimentRepository repo(dm);
+
+    ResultsTab tab;
+    tab.setRepository(&repo);
+    tab.setDatabase(dm.database());
+    EXPECT_EQ(tab.pairsRowCount(), 0);
+    EXPECT_EQ(tab.experimentsRowCount(), 0);
+}
+
+TEST(ResultsTabTest, RefreshShowsSavedRows) {
+    TempDbForTab tdb;
+    DatabaseManager dm(tdb.path());
+    ASSERT_TRUE(dm.initialize());
+    ExperimentRepository repo(dm);
+
+    ResultsTab tab;
+    tab.setRepository(&repo);
+    tab.setDatabase(dm.database());
+
+    auto e1 = makeStubExperiment(3, "first");   // 3 pairs
+    auto e2 = makeStubExperiment(2, "second");  // 1 pair
+    repo.saveExperiment(e1);
+    repo.saveExperiment(e2);
+    tab.refresh();
+
+    EXPECT_EQ(tab.experimentsRowCount(), 2);
+    EXPECT_EQ(tab.pairsRowCount(), 4);  // 3 + 1
+}
+
+TEST(ResultsTabTest, ExportCsvWritesAllRowsWithHeader) {
+    TempDbForTab tdb;
+    DatabaseManager dm(tdb.path());
+    ASSERT_TRUE(dm.initialize());
+    ExperimentRepository repo(dm);
+
+    ResultsTab tab;
+    tab.setRepository(&repo);
+    tab.setDatabase(dm.database());
+
+    auto e1 = makeStubExperiment(2, "csv test");
+    repo.saveExperiment(e1);
+    tab.refresh();
+
+    const QString csvPath = QDir::temp().filePath(
+        QString("qi_csv_%1.csv").arg(QUuid::createUuid().toString(QUuid::WithoutBraces)));
+    ASSERT_TRUE(tab.exportPairsToCsv(csvPath));
+
+    QFile f(csvPath);
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QString content = QString::fromUtf8(f.readAll());
+    f.close();
+    QFile::remove(csvPath);
+
+    // Header + 1 data row + trailing newline = 2 non-empty lines.
+    const auto lines = content.split('\n', Qt::SkipEmptyParts);
+    EXPECT_EQ(lines.size(), 2);
+    EXPECT_TRUE(lines[0].contains("id"));
+    EXPECT_TRUE(lines[0].contains("segments"));
 }
