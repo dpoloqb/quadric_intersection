@@ -1,13 +1,25 @@
 add_library(qi_ui STATIC
-    version.cpp
-    version.hpp
+    BoundingBoxWidget.cpp
+    BoundingBoxWidget.hpp
     MainWindow.cpp
     MainWindow.hpp
     MainWindow.ui
+    QuadricParamsWidget.cpp
+    QuadricParamsWidget.hpp
+    SurfaceEditorWidget.cpp
+    SurfaceEditorWidget.hpp
+    TransformWidget.cpp
+    TransformWidget.hpp
+    TriangulationParamsWidget.cpp
+    TriangulationParamsWidget.hpp
+    version.cpp
+    version.hpp
 )
 target_include_directories(qi_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(qi_ui
     PUBLIC
         Qt6::Widgets
         Qt6::OpenGLWidgets
+        qi_geometry
+        qi_experiment
 )

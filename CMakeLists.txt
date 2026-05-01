@@ -11,7 +11,7 @@ set(CMAKE_AUTORCC ON)
 
 option(QI_BUILD_TESTS "Build unit tests" ON)
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets Sql OpenGLWidgets)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets Sql OpenGLWidgets Test)
 find_package(Eigen3 CONFIG REQUIRED)
 
 enable_testing()

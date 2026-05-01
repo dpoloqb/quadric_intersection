@@ -9,17 +9,21 @@ add_executable(qi_tests
     intersection_tests.cpp
     experiment_tests.cpp
     storage_tests.cpp
+    ui_tests.cpp
 )
 target_link_libraries(qi_tests
     PRIVATE
         GTest::gtest
         Qt6::Core
         Qt6::Sql
+        Qt6::Widgets
+        Qt6::Test
         qi_geometry
         qi_mesh
         qi_triangulation
         qi_intersection
         qi_experiment
         qi_storage
+        qi_ui
 )
 gtest_discover_tests(qi_tests)
