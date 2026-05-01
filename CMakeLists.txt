@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
-project(quadric_intersections LANGUAGES CXX)
+project(quadric_intersections
+    VERSION 1.0.0
+    DESCRIPTION "Quadric surface triangulation and pairwise intersection viewer"
+    LANGUAGES CXX
+)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -32,3 +36,25 @@ target_link_libraries(quadric_intersections PRIVATE qi_ui Qt6::Widgets)
 if(QI_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
+
+# ---- install + packaging ----
+include(GNUInstallDirs)
+
+install(TARGETS quadric_intersections
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+install(FILES README.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
+
+set(CPACK_PACKAGE_NAME "quadric-intersections")
+set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
+set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
+set(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
+set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+set(CPACK_PACKAGE_VENDOR "qi project")
+if(WIN32)
+    set(CPACK_GENERATOR "ZIP")
+else()
+    set(CPACK_GENERATOR "TGZ")
+endif()
+include(CPack)
