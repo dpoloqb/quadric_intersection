@@ -3,9 +3,12 @@
 #include <cmath>
 
 #include <Eigen/Geometry>
+#include <chrono>
+#include <iostream>
 #include <memory>
 
 #include "BoundingBox.hpp"
+#include "BvhIntersector.hpp"
 #include "Ellipsoid.hpp"
 #include "MarchingCubes.hpp"
 #include "MarchingCubesParams.hpp"
@@ -29,6 +32,7 @@ using qi::geometry::Quat;
 using qi::geometry::Transform;
 using qi::geometry::Vec3;
 using qi::intersection::buildPolylines;
+using qi::intersection::BvhIntersector;
 using qi::intersection::intersectTriangles;
 using qi::intersection::NaiveIntersector;
 using qi::intersection::orient3d;
@@ -435,6 +439,106 @@ TEST(NaiveIntersectorTest, TwoIntersectingSpheresFullInvariants) {
         const double r = std::sqrt(p.y() * p.y() + p.z() * p.z());
         EXPECT_NEAR(r, std::sqrt(3.0), tolGeom);
     }
+}
+
+// ---- BvhIntersector ----
+
+TEST(BvhIntersectorTest, MethodNameIsStable) {
+    BvhIntersector bi;
+    EXPECT_EQ(bi.methodName(), "bvh");
+}
+
+TEST(BvhIntersectorTest, EmptyMeshDoesNotCrash) {
+    Mesh empty;
+    Mesh nonEmpty;
+    nonEmpty.vertices = {Vec3(0, 0, 0), Vec3(1, 0, 0), Vec3(0, 1, 0)};
+    nonEmpty.triangles = {{0, 1, 2}};
+    BvhIntersector bi;
+    EXPECT_TRUE(bi.findSegments(empty, nonEmpty).empty());
+    EXPECT_TRUE(bi.findSegments(nonEmpty, empty).empty());
+    EXPECT_TRUE(bi.findSegments(empty, empty).empty());
+}
+
+TEST(BvhIntersectorTest, TwoDisjointSpheresReturnsEmpty) {
+    auto qa = std::make_unique<Ellipsoid>(1.0, 1.0, 1.0);
+    auto qb = std::make_unique<Ellipsoid>(1.0, 1.0, 1.0);
+    qb->setTransform(Transform(Vec3(10, 0, 0), Quat::Identity()));
+
+    BoundingBox bboxA(Vec3(-2, -2, -2), Vec3(2, 2, 2));
+    BoundingBox bboxB(Vec3(8, -2, -2), Vec3(12, 2, 2));
+    Mesh ma = triangulateParametric(*qa, bboxA, 24, 24);
+    Mesh mb = triangulateParametric(*qb, bboxB, 24, 24);
+
+    BvhIntersector bi;
+    auto segs = bi.findSegments(ma, mb);
+    EXPECT_EQ(segs.size(), 0u);
+}
+
+TEST(BvhIntersectorTest, ResultMatchesNaiveOnIntersectingSpheres) {
+    // Identical setup to NaiveIntersectorTest.TwoIntersectingSpheresFullInvariants;
+    // BVH must produce a result equivalent to Naive (modulo ordering).
+    Ellipsoid qa(2.0, 2.0, 2.0);
+    Ellipsoid qb(2.0, 2.0, 2.0);
+    qb.setTransform(Transform(Vec3(2, 0, 0), Quat::Identity()));
+    BoundingBox bbox(Vec3(-3, -3, -3), Vec3(5, 3, 3));
+    Mesh ma = triangulateParametric(qa, bbox, 32, 32);
+    Mesh mb = triangulateParametric(qb, bbox, 32, 32);
+
+    NaiveIntersector ni;
+    BvhIntersector bi;
+
+    auto naiveSegs = ni.findSegments(ma, mb);
+    auto bvhSegs = bi.findSegments(ma, mb);
+
+    // Same number of segments and the stitched polylines have the same shape.
+    EXPECT_EQ(naiveSegs.size(), bvhSegs.size());
+
+    auto polysNaive = buildPolylines(naiveSegs, 1e-3);
+    auto polysBvh = buildPolylines(bvhSegs, 1e-3);
+    EXPECT_EQ(polysNaive.size(), polysBvh.size());
+
+    // Both should give a single closed circle of radius √3 in plane x=1.
+    ASSERT_GE(polysBvh.size(), 1u);
+    std::size_t biggest = 0;
+    for (std::size_t i = 1; i < polysBvh.size(); ++i) {
+        if (polysBvh[i].points.size() > polysBvh[biggest].points.size()) biggest = i;
+    }
+    const auto& circle = polysBvh[biggest];
+    EXPECT_TRUE(circle.closed);
+    const double tol = 0.08;
+    for (const auto& p : circle.points) {
+        EXPECT_NEAR(p.x(), 1.0, tol);
+        EXPECT_NEAR(std::sqrt(p.y() * p.y() + p.z() * p.z()), std::sqrt(3.0), tol);
+    }
+}
+
+TEST(BvhIntersectorTest, FasterThanNaiveOnIntersectingSpheres) {
+    Ellipsoid qa(2.0, 2.0, 2.0);
+    Ellipsoid qb(2.0, 2.0, 2.0);
+    qb.setTransform(Transform(Vec3(2, 0, 0), Quat::Identity()));
+    BoundingBox bbox(Vec3(-3, -3, -3), Vec3(5, 3, 3));
+    Mesh ma = triangulateParametric(qa, bbox, 40, 40);
+    Mesh mb = triangulateParametric(qb, bbox, 40, 40);
+
+    NaiveIntersector ni;
+    BvhIntersector bi;
+
+    using clock = std::chrono::steady_clock;
+
+    const auto t0 = clock::now();
+    auto naiveSegs = ni.findSegments(ma, mb);
+    const auto t1 = clock::now();
+    auto bvhSegs = bi.findSegments(ma, mb);
+    const auto t2 = clock::now();
+
+    const auto naiveMs =
+        std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+    const auto bvhMs =
+        std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
+    std::cout << "  naive: " << naiveMs << " ms;  bvh: " << bvhMs << " ms\n";
+
+    EXPECT_EQ(naiveSegs.size(), bvhSegs.size());
+    EXPECT_LT(bvhMs, naiveMs);
 }
 
 // ---- Triangle-triangle: integrative test (kept last) ----

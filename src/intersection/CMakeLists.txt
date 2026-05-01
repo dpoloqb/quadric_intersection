@@ -1,4 +1,6 @@
 add_library(qi_intersection STATIC
+    BvhIntersector.cpp
+    BvhIntersector.hpp
     MeshIntersector.hpp
     NaiveIntersector.cpp
     NaiveIntersector.hpp

@@ -138,6 +138,22 @@ Segment constructSegment(const Vec3& p1, const Vec3& q1, const Vec3& r1,
 // behaviour and the Möller-based implementation that lived here before.
 std::optional<Segment> intersectTriangles(const Vec3& a1, const Vec3& b1, const Vec3& c1,
                                           const Vec3& a2, const Vec3& b2, const Vec3& c2) {
+    // Step 0: AABB rejection. Geometrically, two triangles can intersect only
+    // if their axis-aligned bounding boxes overlap. This also guards against
+    // numerical false positives in the orient3d-based predicate when the two
+    // triangles are far apart but the determinants are tiny relative to
+    // coordinate magnitudes.
+    {
+        const Vec3 mn1 = a1.cwiseMin(b1).cwiseMin(c1);
+        const Vec3 mx1 = a1.cwiseMax(b1).cwiseMax(c1);
+        const Vec3 mn2 = a2.cwiseMin(b2).cwiseMin(c2);
+        const Vec3 mx2 = a2.cwiseMax(b2).cwiseMax(c2);
+        if ((mn1.array() > mx2.array()).any() ||
+            (mn2.array() > mx1.array()).any()) {
+            return std::nullopt;
+        }
+    }
+
     // Step 1: signs of T1's vertices w.r.t. plane(T2).
     const int s0 = orient3d(a2, b2, c2, a1);
     const int s1 = orient3d(a2, b2, c2, b1);
