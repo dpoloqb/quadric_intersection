@@ -6,6 +6,7 @@ add_executable(qi_tests
     mesh_tests.cpp
     triangulation_tests.cpp
     intersection_tests.cpp
+    experiment_tests.cpp
 )
 target_link_libraries(qi_tests
     PRIVATE
@@ -15,5 +16,6 @@ target_link_libraries(qi_tests
         qi_mesh
         qi_triangulation
         qi_intersection
+        qi_experiment
 )
 gtest_discover_tests(qi_tests)

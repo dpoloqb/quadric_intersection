@@ -1,6 +1,6 @@
 add_library(qi_experiment STATIC
-    version.cpp
-    version.hpp
+    ExperimentResult.cpp
+    ExperimentResult.hpp
 )
 target_include_directories(qi_experiment PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(qi_experiment
