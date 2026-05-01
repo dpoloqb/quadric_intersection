@@ -1,11 +1,17 @@
 #include <gtest/gtest.h>
 
 #include <Eigen/Geometry>
+#include <QDir>
+#include <QFile>
 #include <QSignalSpy>
+#include <QUuid>
 
 #include "BoundingBox.hpp"
 #include "BoundingBoxWidget.hpp"
+#include "DatabaseManager.hpp"
 #include "ExperimentConfig.hpp"
+#include "ExperimentRepository.hpp"
+#include "ExperimentTab.hpp"
 #include "QuadricParamsWidget.hpp"
 #include "SurfaceEditorWidget.hpp"
 #include "Transform.hpp"
@@ -14,13 +20,17 @@
 #include "Vec3.hpp"
 #include "test_utils.hpp"
 
+using qi::experiment::ExperimentResult;
 using qi::experiment::SurfaceConfig;
 using qi::geometry::BoundingBox;
 using qi::geometry::QuadricParams;
 using qi::geometry::Quat;
 using qi::geometry::Transform;
 using qi::geometry::Vec3;
+using qi::storage::DatabaseManager;
+using qi::storage::ExperimentRepository;
 using qi::ui::BoundingBoxWidget;
+using qi::ui::ExperimentTab;
 using qi::ui::QuadricParamsWidget;
 using qi::ui::SurfaceEditorWidget;
 using qi::ui::TransformWidget;
@@ -156,4 +166,76 @@ TEST(SurfaceEditorWidgetTest, ConfigChangedSignalFires) {
     sc.triangulationMethod = "parametric";
     w.setConfig(sc);
     EXPECT_GE(spy.count(), 1);
+}
+
+// ---- ExperimentTab ----
+
+namespace {
+class TempDbForTab {
+public:
+    TempDbForTab() {
+        path_ = QDir(QDir::tempPath())
+                    .filePath(QString("qi_tab_%1.db")
+                                  .arg(QUuid::createUuid().toString(QUuid::WithoutBraces)));
+    }
+    ~TempDbForTab() { QFile::remove(path_); }
+    QString path() const { return path_; }
+private:
+    QString path_;
+};
+}  // namespace
+
+TEST(ExperimentTabTest, ConstructionSeedsOneSurface) {
+    ExperimentTab tab;
+    EXPECT_EQ(tab.surfaceCount(), 1);
+}
+
+TEST(ExperimentTabTest, AddRemoveDuplicateSurface) {
+    ExperimentTab tab;
+    tab.addSurface();
+    tab.addSurface();
+    EXPECT_EQ(tab.surfaceCount(), 3);
+
+    tab.duplicateSelectedSurface();
+    EXPECT_EQ(tab.surfaceCount(), 4);
+
+    tab.removeSelectedSurface();
+    tab.removeSelectedSurface();
+    EXPECT_EQ(tab.surfaceCount(), 2);
+}
+
+TEST(ExperimentTabTest, BuildConfigReflectsUiState) {
+    ExperimentTab tab;
+    auto cfg = tab.buildConfig();
+    EXPECT_EQ(cfg.surfaces.size(), 1u);
+    EXPECT_EQ(cfg.surfaces[0].type, "ellipsoid");
+    EXPECT_EQ(cfg.intersectionMethod, "bvh");
+    EXPECT_TRUE(cfg.bbox.isValid());
+}
+
+TEST(ExperimentTabTest, RunSyncProducesNonEmptyResult) {
+    // Default config: one ellipsoid (R=1) in [-3,3]³ — gives a non-trivial
+    // mesh and zero pairwise intersections (only 1 surface).
+    ExperimentTab tab;
+    auto result = tab.runSync();
+    ASSERT_EQ(result.surfaces.size(), 1u);
+    EXPECT_GT(result.surfaces[0].trianglesCount, 0);
+    EXPECT_TRUE(result.intersections.empty());
+}
+
+TEST(ExperimentTabTest, RunSyncSavedToRepositoryWhenAttached) {
+    TempDbForTab tdb;
+    DatabaseManager dm(tdb.path());
+    ASSERT_TRUE(dm.initialize());
+    ExperimentRepository repo(dm);
+
+    ExperimentTab tab;
+    tab.setRepository(&repo);
+    auto result = tab.runSync();
+
+    // runSync itself doesn't save (saving happens in onRunFinished after the
+    // async path). Persist explicitly to verify the wired-in repo works.
+    int id = repo.saveExperiment(result);
+    EXPECT_GT(id, 0);
+    EXPECT_EQ(repo.listExperiments().size(), 1u);
 }

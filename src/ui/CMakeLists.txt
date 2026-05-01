@@ -1,6 +1,8 @@
 add_library(qi_ui STATIC
     BoundingBoxWidget.cpp
     BoundingBoxWidget.hpp
+    ExperimentTab.cpp
+    ExperimentTab.hpp
     MainWindow.cpp
     MainWindow.hpp
     MainWindow.ui
@@ -20,6 +22,8 @@ target_link_libraries(qi_ui
     PUBLIC
         Qt6::Widgets
         Qt6::OpenGLWidgets
+        Qt6::Concurrent
         qi_geometry
         qi_experiment
+        qi_storage
 )
