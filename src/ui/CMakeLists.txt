@@ -18,6 +18,8 @@ add_library(qi_ui STATIC
     TransformWidget.hpp
     TriangulationParamsWidget.cpp
     TriangulationParamsWidget.hpp
+    ViewTab.cpp
+    ViewTab.hpp
     Viewport3D.cpp
     Viewport3D.hpp
     version.cpp

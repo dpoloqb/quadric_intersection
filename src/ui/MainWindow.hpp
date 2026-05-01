@@ -18,6 +18,7 @@ namespace qi::ui {
 
 class ExperimentTab;
 class ResultsTab;
+class ViewTab;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -32,6 +33,7 @@ private:
     std::unique_ptr<qi::storage::ExperimentRepository> repo_;
     ExperimentTab* experimentTab_ = nullptr;
     ResultsTab* resultsTab_ = nullptr;
+    ViewTab* viewTab_ = nullptr;
 };
 
 }  // namespace qi::ui

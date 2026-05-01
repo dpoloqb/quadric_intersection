@@ -8,6 +8,7 @@
 #include "ExperimentRepository.hpp"
 #include "ExperimentTab.hpp"
 #include "ResultsTab.hpp"
+#include "ViewTab.hpp"
 #include "ui_MainWindow.h"
 
 namespace qi::ui {
@@ -24,10 +25,12 @@ MainWindow::MainWindow(QWidget* parent)
 
     experimentTab_ = new ExperimentTab(this);
     resultsTab_ = new ResultsTab(this);
+    viewTab_ = new ViewTab(this);
     if (repo_) {
         experimentTab_->setRepository(repo_.get());
         resultsTab_->setRepository(repo_.get());
         resultsTab_->setDatabase(db_->database());
+        viewTab_->setRepository(repo_.get());
     }
 
     auto installInto = [](QWidget* page, QWidget* w) {
@@ -37,11 +40,13 @@ MainWindow::MainWindow(QWidget* parent)
     };
     installInto(ui_->experimentTab, experimentTab_);
     installInto(ui_->resultsTab, resultsTab_);
+    installInto(ui_->viewTab, viewTab_);
 
     connect(experimentTab_, &ExperimentTab::experimentFinished, this,
             [this](int id) {
                 if (id > 0) {
                     resultsTab_->refresh();
+                    viewTab_->refreshExperimentList();
                     QMessageBox::information(
                         this, tr("Experiment saved"),
                         tr("Saved as id %1").arg(id));
@@ -51,7 +56,7 @@ MainWindow::MainWindow(QWidget* parent)
                 }
             });
     connect(resultsTab_, &ResultsTab::experimentDeleted, this,
-            [](int /*id*/) { /* placeholder for future view tab refresh */ });
+            [this](int /*id*/) { viewTab_->refreshExperimentList(); });
 }
 
 MainWindow::~MainWindow() = default;

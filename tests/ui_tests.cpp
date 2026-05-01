@@ -21,6 +21,7 @@
 #include "TransformWidget.hpp"
 #include "TriangulationParamsWidget.hpp"
 #include "Vec3.hpp"
+#include "ViewTab.hpp"
 #include "test_utils.hpp"
 
 using qi::experiment::ExperimentResult;
@@ -42,6 +43,7 @@ using qi::ui::ResultsTab;
 using qi::ui::SurfaceEditorWidget;
 using qi::ui::TransformWidget;
 using qi::ui::TriangulationParamsWidget;
+using qi::ui::ViewTab;
 
 // ---- BoundingBoxWidget ----
 
@@ -393,4 +395,88 @@ TEST(ResultsTabTest, ExportCsvWritesAllRowsWithHeader) {
     EXPECT_EQ(lines.size(), 2);
     EXPECT_TRUE(lines[0].contains("id"));
     EXPECT_TRUE(lines[0].contains("segments"));
+}
+
+// ---- ViewTab ----
+
+namespace {
+
+ExperimentResult makeRealisticExperiment() {
+    // Two intersecting R=2 spheres with low-res parametric grids — small
+    // enough to triangulate fast in the test.
+    ExperimentResult exp;
+    exp.createdAt = "2026-05-01T00:00:00Z";
+    exp.bbox = BoundingBox(Vec3(-3, -3, -3), Vec3(5, 3, 3));
+    exp.notes = "viewtab roundtrip";
+
+    SurfaceRecord s0;
+    s0.indexInExperiment = 0;
+    s0.type = "ellipsoid";
+    s0.params = {2.0, 2.0, 2.0, 1.0};
+    s0.transform = Transform::identity();
+    s0.triangulationMethod = "parametric";
+    s0.uSteps = 16;
+    s0.vSteps = 16;
+    exp.surfaces.push_back(s0);
+
+    SurfaceRecord s1 = s0;
+    s1.indexInExperiment = 1;
+    s1.transform = Transform(Vec3(2, 0, 0), Quat::Identity());
+    exp.surfaces.push_back(s1);
+
+    IntersectionRecord ir;
+    ir.surface1Index = 0;
+    ir.surface2Index = 1;
+    ir.intersectionMethod = "bvh";
+    exp.intersections.push_back(ir);
+
+    return exp;
+}
+
+}  // namespace
+
+TEST(ViewTabTest, EmptyRepositoryShowsNoExperiments) {
+    TempDbForTab tdb;
+    DatabaseManager dm(tdb.path());
+    ASSERT_TRUE(dm.initialize());
+    ExperimentRepository repo(dm);
+
+    ViewTab tab;
+    tab.setRepository(&repo);
+    EXPECT_EQ(tab.experimentListSize(), 0);
+}
+
+TEST(ViewTabTest, RefreshPopulatesListFromRepository) {
+    TempDbForTab tdb;
+    DatabaseManager dm(tdb.path());
+    ASSERT_TRUE(dm.initialize());
+    ExperimentRepository repo(dm);
+
+    auto e1 = makeRealisticExperiment();
+    auto e2 = makeRealisticExperiment();
+    repo.saveExperiment(e1);
+    repo.saveExperiment(e2);
+
+    ViewTab tab;
+    tab.setRepository(&repo);
+    EXPECT_EQ(tab.experimentListSize(), 2);
+}
+
+TEST(ViewTabTest, LoadExperimentRecomputesMeshesAndPolylines) {
+    TempDbForTab tdb;
+    DatabaseManager dm(tdb.path());
+    ASSERT_TRUE(dm.initialize());
+    ExperimentRepository repo(dm);
+
+    auto exp = makeRealisticExperiment();
+    int id = repo.saveExperiment(exp);
+    ASSERT_GT(id, 0);
+
+    ViewTab tab;
+    tab.setRepository(&repo);
+    tab.loadExperiment(id);
+
+    // Two surfaces → 2 meshes; two intersecting R=2 spheres → 1 closed polyline.
+    EXPECT_EQ(tab.currentMeshCount(), 2);
+    EXPECT_GE(tab.currentPolylineCount(), 1);
 }
