@@ -1,6 +1,8 @@
 add_library(qi_intersection STATIC
     Orient3d.cpp
     Orient3d.hpp
+    PolylineBuilder.cpp
+    PolylineBuilder.hpp
     TriangleTriangle.cpp
     TriangleTriangle.hpp
 )

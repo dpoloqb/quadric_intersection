@@ -4,13 +4,16 @@
 
 #include "Orient3d.hpp"
 #include "Polyline.hpp"
+#include "PolylineBuilder.hpp"
 #include "TriangleTriangle.hpp"
 #include "Vec3.hpp"
 #include "test_utils.hpp"
 
 using qi::geometry::Vec3;
+using qi::intersection::buildPolylines;
 using qi::intersection::intersectTriangles;
 using qi::intersection::orient3d;
+using qi::mesh::Polyline;
 using qi::mesh::Segment;
 
 // ---- orient3d primitive ----
@@ -226,6 +229,102 @@ TEST(TriangleTriangleTest, VertexTouchesPlaneInsideOtherTriangle) {
     EXPECT_NEAR(seg->a.norm(), 0.0, qi::test::kEpsLoose);
     EXPECT_NEAR(seg->b.norm(), 0.0, qi::test::kEpsLoose);
 }
+
+// ---- PolylineBuilder ----
+
+TEST(PolylineBuilderTest, EmptyInputProducesNoPolylines) {
+    auto poly = buildPolylines({});
+    EXPECT_TRUE(poly.empty());
+}
+
+TEST(PolylineBuilderTest, SingleSegmentProducesOpenPolyline) {
+    Segment s{Vec3(0, 0, 0), Vec3(1, 0, 0)};
+    auto poly = buildPolylines({s});
+    ASSERT_EQ(poly.size(), 1u);
+    EXPECT_FALSE(poly[0].closed);
+    EXPECT_EQ(poly[0].points.size(), 2u);
+}
+
+TEST(PolylineBuilderTest, SimpleClosedLoop) {
+    // Square: A=(0,0,0), B=(1,0,0), C=(1,1,0), D=(0,1,0).
+    const Vec3 A(0, 0, 0), B(1, 0, 0), C(1, 1, 0), D(0, 1, 0);
+    std::vector<Segment> segs{
+        {A, B}, {B, C}, {C, D}, {D, A},
+    };
+    auto poly = buildPolylines(segs);
+    ASSERT_EQ(poly.size(), 1u);
+    EXPECT_TRUE(poly[0].closed);
+    // Closed polyline ends with the start point repeated → 5 points.
+    EXPECT_EQ(poly[0].points.size(), 5u);
+    EXPECT_NEAR((poly[0].points.front() - poly[0].points.back()).norm(), 0.0,
+                qi::test::kEpsTight);
+}
+
+TEST(PolylineBuilderTest, OpenChain) {
+    const Vec3 A(0, 0, 0), B(1, 0, 0), C(2, 0, 0), D(3, 0, 0);
+    std::vector<Segment> segs{{A, B}, {B, C}, {C, D}};
+    auto poly = buildPolylines(segs);
+    ASSERT_EQ(poly.size(), 1u);
+    EXPECT_FALSE(poly[0].closed);
+    EXPECT_EQ(poly[0].points.size(), 4u);
+}
+
+TEST(PolylineBuilderTest, OpenChainHandlesArbitrarySegmentOrder) {
+    // Same chain as above but segments listed in reversed order — the builder
+    // must walk forward AND backward from the seed segment to recover the full
+    // chain.
+    const Vec3 A(0, 0, 0), B(1, 0, 0), C(2, 0, 0), D(3, 0, 0);
+    std::vector<Segment> segs{{B, C}, {A, B}, {C, D}};
+    auto poly = buildPolylines(segs);
+    ASSERT_EQ(poly.size(), 1u);
+    EXPECT_FALSE(poly[0].closed);
+    EXPECT_EQ(poly[0].points.size(), 4u);
+}
+
+TEST(PolylineBuilderTest, TwoSeparateLoops) {
+    // Two disjoint triangles.
+    const Vec3 A(0, 0, 0), B(1, 0, 0), C(0, 1, 0);
+    const Vec3 D(10, 0, 0), E(11, 0, 0), F(10, 1, 0);
+    std::vector<Segment> segs{
+        {A, B}, {B, C}, {C, A},
+        {D, E}, {E, F}, {F, D},
+    };
+    auto poly = buildPolylines(segs);
+    ASSERT_EQ(poly.size(), 2u);
+    EXPECT_TRUE(poly[0].closed);
+    EXPECT_TRUE(poly[1].closed);
+}
+
+TEST(PolylineBuilderTest, ToleranceMergesNearbyPoints) {
+    // Square, but each segment's endpoints are perturbed by epsilon/10.
+    const double e = 1e-6;
+    const double d = e / 10.0;  // smaller than epsilon → must be merged
+    std::vector<Segment> segs{
+        {Vec3(0, 0, 0),       Vec3(1, 0, 0)},
+        {Vec3(1 + d, 0, 0),   Vec3(1, 1, 0)},
+        {Vec3(1, 1 + d, 0),   Vec3(0, 1, 0)},
+        {Vec3(0 + d, 1, 0),   Vec3(0, 0 + d, 0)},
+    };
+    auto poly = buildPolylines(segs, e);
+    ASSERT_EQ(poly.size(), 1u);
+    EXPECT_TRUE(poly[0].closed);
+}
+
+TEST(PolylineBuilderTest, DegenerateZeroLengthSegmentsDropped) {
+    // A real triangle plus two zero-length segments.
+    const Vec3 A(0, 0, 0), B(1, 0, 0), C(0, 1, 0);
+    std::vector<Segment> segs{
+        {A, A},
+        {A, B}, {B, C}, {C, A},
+        {B, B},
+    };
+    auto poly = buildPolylines(segs);
+    ASSERT_EQ(poly.size(), 1u);
+    EXPECT_TRUE(poly[0].closed);
+    EXPECT_EQ(poly[0].points.size(), 4u);
+}
+
+// ---- Triangle-triangle: integrative test (kept last) ----
 
 TEST(TriangleTriangleTest, ManyPermutationsProduceConsistentBoolean) {
     // Two triangles that intersect, two that don't. For each, all 9 cyclic
