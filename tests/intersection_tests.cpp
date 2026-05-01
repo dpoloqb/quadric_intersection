@@ -2,19 +2,43 @@
 
 #include <cmath>
 
+#include <Eigen/Geometry>
+#include <memory>
+
+#include "BoundingBox.hpp"
+#include "Ellipsoid.hpp"
+#include "MarchingCubes.hpp"
+#include "MarchingCubesParams.hpp"
+#include "Mesh.hpp"
+#include "NaiveIntersector.hpp"
 #include "Orient3d.hpp"
+#include "ParametricParams.hpp"
+#include "ParametricTriangulator.hpp"
 #include "Polyline.hpp"
 #include "PolylineBuilder.hpp"
+#include "Quadric.hpp"
+#include "QuadricFactory.hpp"
+#include "Transform.hpp"
 #include "TriangleTriangle.hpp"
 #include "Vec3.hpp"
 #include "test_utils.hpp"
 
+using qi::geometry::BoundingBox;
+using qi::geometry::Ellipsoid;
+using qi::geometry::Quat;
+using qi::geometry::Transform;
 using qi::geometry::Vec3;
 using qi::intersection::buildPolylines;
 using qi::intersection::intersectTriangles;
+using qi::intersection::NaiveIntersector;
 using qi::intersection::orient3d;
+using qi::mesh::Mesh;
 using qi::mesh::Polyline;
 using qi::mesh::Segment;
+using qi::triangulation::MarchingCubes;
+using qi::triangulation::MarchingCubesParams;
+using qi::triangulation::ParametricParams;
+using qi::triangulation::ParametricTriangulator;
 
 // ---- orient3d primitive ----
 
@@ -322,6 +346,95 @@ TEST(PolylineBuilderTest, DegenerateZeroLengthSegmentsDropped) {
     ASSERT_EQ(poly.size(), 1u);
     EXPECT_TRUE(poly[0].closed);
     EXPECT_EQ(poly[0].points.size(), 4u);
+}
+
+// ---- NaiveIntersector ----
+
+namespace {
+
+// Helper: triangulate a quadric with parametric method into a Mesh.
+Mesh triangulateParametric(const qi::geometry::Quadric& q,
+                           const BoundingBox& bbox,
+                           int uSteps = 80, int vSteps = 80) {
+    ParametricTriangulator pt(ParametricParams{uSteps, vSteps});
+    return pt.triangulate(q, bbox);
+}
+
+}  // namespace
+
+TEST(NaiveIntersectorTest, MethodNameIsStable) {
+    NaiveIntersector ni;
+    EXPECT_EQ(ni.methodName(), "naive");
+}
+
+TEST(NaiveIntersectorTest, TwoDisjointSpheres) {
+    // Sphere R=1 at origin, sphere R=1 at (10,0,0). No overlap.
+    auto qa = std::make_unique<Ellipsoid>(1.0, 1.0, 1.0);
+    auto qb = std::make_unique<Ellipsoid>(1.0, 1.0, 1.0);
+    qb->setTransform(Transform(Vec3(10, 0, 0), Quat::Identity()));
+
+    BoundingBox bboxA(Vec3(-2, -2, -2), Vec3(2, 2, 2));
+    BoundingBox bboxB(Vec3(8, -2, -2), Vec3(12, 2, 2));
+    Mesh ma = triangulateParametric(*qa, bboxA, 24, 24);
+    Mesh mb = triangulateParametric(*qb, bboxB, 24, 24);
+
+    NaiveIntersector ni;
+    auto segs = ni.findSegments(ma, mb);
+    auto polys = buildPolylines(segs);
+    EXPECT_EQ(segs.size(), 0u);
+    EXPECT_EQ(polys.size(), 0u);
+}
+
+// Two R=2 spheres centered at (0,0,0) and (2,0,0) intersect in a circle in
+// plane x=1, radius √3. Combine all invariants into one test so we only run
+// the O(n·m) pipeline once. With 32 uSteps×32 vSteps ≈ 2k triangles per mesh,
+// pair test count ≈ 4M and Naive takes ~20 s in Debug.
+TEST(NaiveIntersectorTest, TwoIntersectingSpheresFullInvariants) {
+    Ellipsoid qa(2.0, 2.0, 2.0);
+    Ellipsoid qb(2.0, 2.0, 2.0);
+    qb.setTransform(Transform(Vec3(2, 0, 0), Quat::Identity()));
+    BoundingBox bbox(Vec3(-3, -3, -3), Vec3(5, 3, 3));
+    Mesh ma = triangulateParametric(qa, bbox, 32, 32);
+    Mesh mb = triangulateParametric(qb, bbox, 32, 32);
+
+    NaiveIntersector ni;
+    auto segs = ni.findSegments(ma, mb);
+    ASSERT_GT(segs.size(), 0u);
+
+    // Tolerances. Triangulation edge length L ≈ 4πR/N ≈ 0.78 for N=32, R=2;
+    // tangent-plane error ≈ L²/(8R) ≈ 0.04.
+    const double tolGeom = 0.08;
+    const double tolImplicit = 0.06;
+
+    // Invariant 1: every segment endpoint lies on both implicit surfaces.
+    for (const auto& s : segs) {
+        EXPECT_NEAR(qa.implicit(s.a), 0.0, tolImplicit);
+        EXPECT_NEAR(qb.implicit(s.a), 0.0, tolImplicit);
+        EXPECT_NEAR(qa.implicit(s.b), 0.0, tolImplicit);
+        EXPECT_NEAR(qb.implicit(s.b), 0.0, tolImplicit);
+    }
+
+    // Invariant 2: symmetry about plane x=1 is preserved — every endpoint
+    // has x ≈ 1.
+    for (const auto& s : segs) {
+        EXPECT_NEAR(s.a.x(), 1.0, tolGeom);
+        EXPECT_NEAR(s.b.x(), 1.0, tolGeom);
+    }
+
+    // Invariant 3: stitched polylines form a closed circle of radius √3.
+    auto polys = buildPolylines(segs, 1e-3);
+    ASSERT_GE(polys.size(), 1u);
+    std::size_t biggest = 0;
+    for (std::size_t i = 1; i < polys.size(); ++i) {
+        if (polys[i].points.size() > polys[biggest].points.size()) biggest = i;
+    }
+    const Polyline& circle = polys[biggest];
+    EXPECT_TRUE(circle.closed);
+    for (const auto& p : circle.points) {
+        EXPECT_NEAR(p.x(), 1.0, tolGeom);
+        const double r = std::sqrt(p.y() * p.y() + p.z() * p.z());
+        EXPECT_NEAR(r, std::sqrt(3.0), tolGeom);
+    }
 }
 
 // ---- Triangle-triangle: integrative test (kept last) ----

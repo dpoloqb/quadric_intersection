@@ -1,4 +1,7 @@
 add_library(qi_intersection STATIC
+    MeshIntersector.hpp
+    NaiveIntersector.cpp
+    NaiveIntersector.hpp
     Orient3d.cpp
     Orient3d.hpp
     PolylineBuilder.cpp
