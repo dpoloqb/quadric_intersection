@@ -14,7 +14,10 @@
 #include <QVBoxLayout>
 #include <QtConcurrent>
 
+#include <QFileDialog>
+
 #include "BoundingBoxWidget.hpp"
+#include "ConfigJson.hpp"
 #include "ExperimentRepository.hpp"
 #include "ExperimentRunner.hpp"
 #include "SurfaceEditorWidget.hpp"
@@ -47,6 +50,8 @@ ExperimentTab::ExperimentTab(QWidget* parent) : QWidget(parent) {
     notesEdit_->setPlaceholderText(tr("notes (optional)"));
 
     runButton_ = new QPushButton(tr("Run"));
+    auto* loadBtn = new QPushButton(tr("Load…"));
+    auto* saveBtn = new QPushButton(tr("Save…"));
     progressBar_ = new QProgressBar;
     progressBar_->setRange(0, 1);
     progressBar_->setValue(0);
@@ -72,6 +77,8 @@ ExperimentTab::ExperimentTab(QWidget* parent) : QWidget(parent) {
     bottomLayout->addWidget(new QLabel(tr("Method:")));
     bottomLayout->addWidget(intersectionMethodCombo_);
     bottomLayout->addWidget(notesEdit_, /*stretch=*/1);
+    bottomLayout->addWidget(loadBtn);
+    bottomLayout->addWidget(saveBtn);
     bottomLayout->addWidget(runButton_);
 
     auto* main = new QVBoxLayout(this);
@@ -91,6 +98,26 @@ ExperimentTab::ExperimentTab(QWidget* parent) : QWidget(parent) {
     connect(removeBtn, &QPushButton::clicked, this, &ExperimentTab::removeSelectedSurface);
     connect(duplicateBtn, &QPushButton::clicked, this, &ExperimentTab::duplicateSelectedSurface);
     connect(runButton_, &QPushButton::clicked, this, &ExperimentTab::runAsync);
+    connect(loadBtn, &QPushButton::clicked, this, [this]() {
+        const QString path = QFileDialog::getOpenFileName(
+            this, tr("Load experiment config"), QString(),
+            tr("JSON files (*.json)"));
+        if (path.isEmpty()) return;
+        if (!loadConfigFromFile(path)) {
+            QMessageBox::warning(this, tr("Load failed"),
+                                 tr("Could not parse %1").arg(path));
+        }
+    });
+    connect(saveBtn, &QPushButton::clicked, this, [this]() {
+        const QString path = QFileDialog::getSaveFileName(
+            this, tr("Save experiment config"), QString(),
+            tr("JSON files (*.json)"));
+        if (path.isEmpty()) return;
+        if (!saveConfigToFile(path)) {
+            QMessageBox::warning(this, tr("Save failed"),
+                                 tr("Could not write %1").arg(path));
+        }
+    });
 
     connect(surfaceList_, &QListWidget::currentRowChanged, this,
             [this](int) { onSelectionChanged(); });
@@ -229,6 +256,37 @@ void ExperimentTab::onRunFinished() {
         savedId = repo_->saveExperiment(result);
     }
     emit experimentFinished(savedId);
+}
+
+void ExperimentTab::applyConfig(const ExperimentConfig& cfg) {
+    bboxWidget_->setBoundingBox(cfg.bbox);
+
+    const int idx = intersectionMethodCombo_->findData(cfg.intersectionMethod);
+    if (idx >= 0) intersectionMethodCombo_->setCurrentIndex(idx);
+    notesEdit_->setText(cfg.notes);
+
+    surfaces_.clear();
+    surfaceList_->clear();
+    if (cfg.surfaces.empty()) {
+        addSurface();  // keep at least one
+        return;
+    }
+    surfaces_ = cfg.surfaces;
+    for (std::size_t i = 0; i < surfaces_.size(); ++i) {
+        surfaceList_->addItem(labelFor(static_cast<int>(i)));
+    }
+    surfaceList_->setCurrentRow(0);
+}
+
+bool ExperimentTab::saveConfigToFile(const QString& path) const {
+    return qi::experiment::saveConfigToFile(buildConfig(), path);
+}
+
+bool ExperimentTab::loadConfigFromFile(const QString& path) {
+    auto opt = qi::experiment::loadConfigFromFile(path);
+    if (!opt.has_value()) return false;
+    applyConfig(*opt);
+    return true;
 }
 
 }  // namespace qi::ui

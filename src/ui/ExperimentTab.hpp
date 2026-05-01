@@ -59,6 +59,13 @@ public:
     // Asynchronous run — wired to the Run button.
     void runAsync();
 
+    // Replace surfaces and metadata in-place from an in-memory config.
+    void applyConfig(const qi::experiment::ExperimentConfig& cfg);
+
+    // Save / load the current config as a JSON file. Returns true on success.
+    bool saveConfigToFile(const QString& path) const;
+    bool loadConfigFromFile(const QString& path);
+
 signals:
     // Emitted on the UI thread after the runner finishes (and the row is
     // saved if a repository is set). `experimentId` is the DB id, or 0 if

@@ -1,4 +1,6 @@
 add_library(qi_experiment STATIC
+    ConfigJson.cpp
+    ConfigJson.hpp
     ExperimentConfig.hpp
     ExperimentResult.cpp
     ExperimentResult.hpp

@@ -5,7 +5,12 @@
 #include <QJsonObject>
 #include <cmath>
 
+#include <QDir>
+#include <QFile>
+#include <QUuid>
+
 #include "BoundingBox.hpp"
+#include "ConfigJson.hpp"
 #include "ExperimentConfig.hpp"
 #include "ExperimentResult.hpp"
 #include "ExperimentRunner.hpp"
@@ -287,4 +292,83 @@ TEST(ExperimentRunnerTest, ResultMetadataIsPopulated) {
                 qi::test::kEpsTight);
     EXPECT_NEAR((result.bbox.max() - cfg.bbox.max()).norm(), 0.0,
                 qi::test::kEpsTight);
+}
+
+// ---- ConfigJson ----
+
+namespace {
+
+ExperimentConfig makeSampleConfig() {
+    ExperimentConfig cfg;
+    cfg.bbox = BoundingBox(Vec3(-3, -2, -1), Vec3(5, 4, 3));
+    cfg.intersectionMethod = "naive";
+    cfg.notes = "json test";
+
+    SurfaceConfig s1;
+    s1.type = "ellipsoid";
+    s1.params = {2.5, 3.5, 4.5, 1.0};
+    s1.transform = Transform(Vec3(1, 2, 3), Quat::Identity());
+    s1.triangulationMethod = "parametric";
+    s1.uSteps = 20;
+    s1.vSteps = 30;
+
+    SurfaceConfig s2;
+    s2.type = "cone";
+    s2.params = {1.0, 1.0, 2.0, 1.0};
+    s2.transform = Transform::identity();
+    s2.triangulationMethod = "marching_cubes";
+    s2.mcResolution = 48;
+
+    cfg.surfaces = {s1, s2};
+    return cfg;
+}
+
+}  // namespace
+
+TEST(ConfigJsonTest, RoundtripPreservesAllFields) {
+    const auto in = makeSampleConfig();
+    const QString json = qi::experiment::configToJson(in);
+    const auto out = qi::experiment::configFromJson(json);
+
+    EXPECT_NEAR((out.bbox.min() - in.bbox.min()).norm(), 0.0, qi::test::kEpsTight);
+    EXPECT_NEAR((out.bbox.max() - in.bbox.max()).norm(), 0.0, qi::test::kEpsTight);
+    EXPECT_EQ(out.intersectionMethod, in.intersectionMethod);
+    EXPECT_EQ(out.notes, in.notes);
+    ASSERT_EQ(out.surfaces.size(), in.surfaces.size());
+    for (std::size_t i = 0; i < in.surfaces.size(); ++i) {
+        EXPECT_EQ(out.surfaces[i].type, in.surfaces[i].type);
+        EXPECT_DOUBLE_EQ(out.surfaces[i].params.a, in.surfaces[i].params.a);
+        EXPECT_DOUBLE_EQ(out.surfaces[i].params.b, in.surfaces[i].params.b);
+        EXPECT_DOUBLE_EQ(out.surfaces[i].params.c, in.surfaces[i].params.c);
+        EXPECT_EQ(out.surfaces[i].triangulationMethod, in.surfaces[i].triangulationMethod);
+        EXPECT_EQ(out.surfaces[i].uSteps, in.surfaces[i].uSteps);
+        EXPECT_EQ(out.surfaces[i].vSteps, in.surfaces[i].vSteps);
+        EXPECT_EQ(out.surfaces[i].mcResolution, in.surfaces[i].mcResolution);
+    }
+}
+
+TEST(ConfigJsonTest, FileRoundtrip) {
+    const auto in = makeSampleConfig();
+    const QString path = QDir::temp().filePath(
+        QString("qi_cfg_%1.json").arg(QUuid::createUuid().toString(QUuid::WithoutBraces)));
+
+    ASSERT_TRUE(qi::experiment::saveConfigToFile(in, path));
+    auto opt = qi::experiment::loadConfigFromFile(path);
+    QFile::remove(path);
+    ASSERT_TRUE(opt.has_value());
+    EXPECT_EQ(opt->surfaces.size(), in.surfaces.size());
+    EXPECT_EQ(opt->intersectionMethod, in.intersectionMethod);
+}
+
+TEST(ConfigJsonTest, LoadFromMissingPathReturnsNullopt) {
+    EXPECT_FALSE(qi::experiment::loadConfigFromFile("/nonexistent/path.json").has_value());
+}
+
+TEST(ConfigJsonTest, EmptySurfacesListSerializes) {
+    ExperimentConfig cfg;
+    cfg.bbox = BoundingBox(Vec3(0, 0, 0), Vec3(1, 1, 1));
+    cfg.intersectionMethod = "bvh";
+    const QString json = qi::experiment::configToJson(cfg);
+    const auto out = qi::experiment::configFromJson(json);
+    EXPECT_TRUE(out.surfaces.empty());
 }

@@ -232,6 +232,45 @@ TEST(ExperimentTabTest, RunSyncProducesNonEmptyResult) {
     EXPECT_TRUE(result.intersections.empty());
 }
 
+TEST(ExperimentTabTest, ApplyConfigReplacesSurfaces) {
+    ExperimentTab tab;
+    qi::experiment::ExperimentConfig cfg;
+    cfg.bbox = BoundingBox(Vec3(-2, -2, -2), Vec3(2, 2, 2));
+    cfg.intersectionMethod = "naive";
+    cfg.notes = "loaded";
+    SurfaceConfig s;
+    s.type = "cone";
+    s.params = {1.0, 1.0, 2.0, 1.0};
+    s.transform = Transform::identity();
+    s.triangulationMethod = "marching_cubes";
+    s.mcResolution = 48;
+    cfg.surfaces = {s, s, s};
+
+    tab.applyConfig(cfg);
+    EXPECT_EQ(tab.surfaceCount(), 3);
+    auto out = tab.buildConfig();
+    EXPECT_EQ(out.intersectionMethod, "naive");
+    EXPECT_EQ(out.notes, "loaded");
+    EXPECT_EQ(out.surfaces.size(), 3u);
+    EXPECT_EQ(out.surfaces[0].type, "cone");
+}
+
+TEST(ExperimentTabTest, SaveLoadConfigFileRoundtrip) {
+    ExperimentTab tab;
+    tab.addSurface();
+    tab.addSurface();  // 3 surfaces total (1 default + 2)
+
+    const QString path = QDir::temp().filePath(
+        QString("qi_tab_cfg_%1.json").arg(QUuid::createUuid().toString(QUuid::WithoutBraces)));
+    EXPECT_TRUE(tab.saveConfigToFile(path));
+
+    ExperimentTab tab2;
+    EXPECT_TRUE(tab2.loadConfigFromFile(path));
+    QFile::remove(path);
+
+    EXPECT_EQ(tab2.surfaceCount(), 3);
+}
+
 TEST(ExperimentTabTest, RunSyncSavedToRepositoryWhenAttached) {
     TempDbForTab tdb;
     DatabaseManager dm(tdb.path());
