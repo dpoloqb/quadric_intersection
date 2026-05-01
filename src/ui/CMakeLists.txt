@@ -6,6 +6,8 @@ add_library(qi_ui STATIC
     MainWindow.cpp
     MainWindow.hpp
     MainWindow.ui
+    OrbitalCamera.cpp
+    OrbitalCamera.hpp
     QuadricParamsWidget.cpp
     QuadricParamsWidget.hpp
     ResultsTab.cpp
@@ -16,6 +18,8 @@ add_library(qi_ui STATIC
     TransformWidget.hpp
     TriangulationParamsWidget.cpp
     TriangulationParamsWidget.hpp
+    Viewport3D.cpp
+    Viewport3D.hpp
     version.cpp
     version.hpp
 )

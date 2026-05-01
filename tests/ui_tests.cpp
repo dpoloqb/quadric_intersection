@@ -13,6 +13,7 @@
 #include "ExperimentRepository.hpp"
 #include "ExperimentTab.hpp"
 #include "ExperimentResult.hpp"
+#include "OrbitalCamera.hpp"
 #include "QuadricParamsWidget.hpp"
 #include "ResultsTab.hpp"
 #include "SurfaceEditorWidget.hpp"
@@ -35,6 +36,7 @@ using qi::storage::DatabaseManager;
 using qi::storage::ExperimentRepository;
 using qi::ui::BoundingBoxWidget;
 using qi::ui::ExperimentTab;
+using qi::ui::OrbitalCamera;
 using qi::ui::QuadricParamsWidget;
 using qi::ui::ResultsTab;
 using qi::ui::SurfaceEditorWidget;
@@ -317,6 +319,49 @@ TEST(ResultsTabTest, RefreshShowsSavedRows) {
 
     EXPECT_EQ(tab.experimentsRowCount(), 2);
     EXPECT_EQ(tab.pairsRowCount(), 4);  // 3 + 1
+}
+
+// ---- OrbitalCamera ----
+
+TEST(OrbitalCameraTest, EyeMovesAroundTarget) {
+    OrbitalCamera c;
+    c.setTarget(QVector3D(1.0f, 2.0f, 3.0f));
+    c.setDistance(5.0f);
+
+    c.setYawPitch(0.0f, 0.0f);
+    auto e0 = c.eye();
+    EXPECT_NEAR(e0.x(), 1.0f, qi::test::kEpsLoose);
+    EXPECT_NEAR(e0.y(), 2.0f, qi::test::kEpsLoose);
+    EXPECT_NEAR(e0.z(), 3.0f + 5.0f, qi::test::kEpsLoose);
+
+    c.setYawPitch(static_cast<float>(qi::test::kPi) / 2.0f, 0.0f);
+    auto e1 = c.eye();
+    EXPECT_NEAR(e1.x(), 1.0f + 5.0f, 1e-4f);
+    EXPECT_NEAR(e1.z(), 3.0f, 1e-4f);
+}
+
+TEST(OrbitalCameraTest, PitchClamps) {
+    OrbitalCamera c;
+    c.setYawPitch(0.0f, 100.0f);  // far past pole
+    EXPECT_LT(c.pitch(), 1.6f);   // clamp ≈ 1.5
+    c.setYawPitch(0.0f, -100.0f);
+    EXPECT_GT(c.pitch(), -1.6f);
+}
+
+TEST(OrbitalCameraTest, ZoomMultipliesDistance) {
+    OrbitalCamera c;
+    c.setDistance(10.0f);
+    c.zoom(0.5f);
+    EXPECT_NEAR(c.distance(), 5.0f, qi::test::kEpsLoose);
+    c.zoom(2.0f);
+    EXPECT_NEAR(c.distance(), 10.0f, qi::test::kEpsLoose);
+}
+
+TEST(OrbitalCameraTest, FrameSetsTargetAndDistance) {
+    OrbitalCamera c;
+    c.frame(QVector3D(2, 0, 0), 4.0f, 1.0f);
+    EXPECT_NEAR(c.target().x(), 2.0f, qi::test::kEpsLoose);
+    EXPECT_GT(c.distance(), 0.0f);
 }
 
 TEST(ResultsTabTest, ExportCsvWritesAllRowsWithHeader) {
