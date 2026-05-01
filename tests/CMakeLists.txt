@@ -2,20 +2,24 @@ find_package(GTest CONFIG REQUIRED)
 include(GoogleTest)
 
 add_executable(qi_tests
+    test_main.cpp
     geometry_tests.cpp
     mesh_tests.cpp
     triangulation_tests.cpp
     intersection_tests.cpp
     experiment_tests.cpp
+    storage_tests.cpp
 )
 target_link_libraries(qi_tests
     PRIVATE
         GTest::gtest
-        GTest::gtest_main
+        Qt6::Core
+        Qt6::Sql
         qi_geometry
         qi_mesh
         qi_triangulation
         qi_intersection
         qi_experiment
+        qi_storage
 )
 gtest_discover_tests(qi_tests)
