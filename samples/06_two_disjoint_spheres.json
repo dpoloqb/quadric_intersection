@@ -1,0 +1,28 @@
+{
+    "bbox": {
+        "min": [-2, -2, -2],
+        "max": [12, 2, 2]
+    },
+    "intersectionMethod": "bvh",
+    "notes": "Two R=1 spheres at distance 10. Expected: 0 segments, 0 polylines. The intersection record still exists in DB but is empty.",
+    "surfaces": [
+        {
+            "type": "ellipsoid",
+            "params": {"a": 1.0, "b": 1.0, "c": 1.0, "p": 1.0},
+            "transform": {"translation": [0, 0, 0], "rotation": [0, 0, 0, 1]},
+            "triangulationMethod": "parametric",
+            "uSteps": 30,
+            "vSteps": 30,
+            "mcResolution": 32
+        },
+        {
+            "type": "ellipsoid",
+            "params": {"a": 1.0, "b": 1.0, "c": 1.0, "p": 1.0},
+            "transform": {"translation": [10, 0, 0], "rotation": [0, 0, 0, 1]},
+            "triangulationMethod": "parametric",
+            "uSteps": 30,
+            "vSteps": 30,
+            "mcResolution": 32
+        }
+    ]
+}

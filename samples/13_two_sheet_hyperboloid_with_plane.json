@@ -1,0 +1,28 @@
+{
+    "bbox": {
+        "min": [-3, -3, -4],
+        "max": [3, 3, 4]
+    },
+    "intersectionMethod": "bvh",
+    "notes": "Two-sheet hyperboloid -x^2-y^2+z^2=1 (sheets at z>=1 and z<=-1) + a thin ellipsoid acting as a horizontal plane at z=2. The plane crosses the upper sheet only: expected 1 closed circle x^2+y^2 = z^2-1 = 3 at z=2.",
+    "surfaces": [
+        {
+            "type": "hyperboloid_two_sheet",
+            "params": {"a": 1.0, "b": 1.0, "c": 1.0, "p": 1.0},
+            "transform": {"translation": [0, 0, 0], "rotation": [0, 0, 0, 1]},
+            "triangulationMethod": "parametric",
+            "uSteps": 32,
+            "vSteps": 32,
+            "mcResolution": 32
+        },
+        {
+            "type": "ellipsoid",
+            "params": {"a": 4.0, "b": 4.0, "c": 0.05, "p": 1.0},
+            "transform": {"translation": [0, 0, 2], "rotation": [0, 0, 0, 1]},
+            "triangulationMethod": "parametric",
+            "uSteps": 40,
+            "vSteps": 12,
+            "mcResolution": 32
+        }
+    ]
+}

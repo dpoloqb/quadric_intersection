@@ -1,0 +1,55 @@
+{
+    "bbox": {
+        "min": [-4, -4, -4],
+        "max": [4, 4, 4]
+    },
+    "intersectionMethod": "bvh",
+    "notes": "Five different quadrics → C(5,2)=10 intersection pairs. Some intersect, some don't. Stress-tests the multi-pair UI flow and the BVH on a real workload.",
+    "surfaces": [
+        {
+            "type": "ellipsoid",
+            "params": {"a": 2.0, "b": 2.0, "c": 2.0, "p": 1.0},
+            "transform": {"translation": [0, 0, 0], "rotation": [0, 0, 0, 1]},
+            "triangulationMethod": "parametric",
+            "uSteps": 24,
+            "vSteps": 24,
+            "mcResolution": 32
+        },
+        {
+            "type": "hyperboloid_one_sheet",
+            "params": {"a": 1.0, "b": 1.0, "c": 1.5, "p": 1.0},
+            "transform": {"translation": [0, 0, 0], "rotation": [0, 0, 0, 1]},
+            "triangulationMethod": "parametric",
+            "uSteps": 24,
+            "vSteps": 24,
+            "mcResolution": 32
+        },
+        {
+            "type": "cone",
+            "params": {"a": 1.0, "b": 1.0, "c": 1.0, "p": 1.0},
+            "transform": {"translation": [2, 2, 0], "rotation": [0, 0, 0, 1]},
+            "triangulationMethod": "parametric",
+            "uSteps": 24,
+            "vSteps": 24,
+            "mcResolution": 32
+        },
+        {
+            "type": "elliptic_cylinder",
+            "params": {"a": 0.7, "b": 0.7, "c": 1.0, "p": 1.0},
+            "transform": {"translation": [-1.5, 0, 0], "rotation": [0, 0, 0, 1]},
+            "triangulationMethod": "parametric",
+            "uSteps": 32,
+            "vSteps": 24,
+            "mcResolution": 32
+        },
+        {
+            "type": "ellipsoid",
+            "params": {"a": 0.8, "b": 0.8, "c": 0.8, "p": 1.0},
+            "transform": {"translation": [3.0, -2.5, 0], "rotation": [0, 0, 0, 1]},
+            "triangulationMethod": "parametric",
+            "uSteps": 24,
+            "vSteps": 24,
+            "mcResolution": 32
+        }
+    ]
+}

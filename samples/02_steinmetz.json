@@ -1,0 +1,31 @@
+{
+    "bbox": {
+        "min": [-2.5, -2.5, -2.5],
+        "max": [2.5, 2.5, 2.5]
+    },
+    "intersectionMethod": "bvh",
+    "notes": "Steinmetz solid: two unit cylinders, axes Z and X. Expected: two ellipses (the boundary curves of Steinmetz)",
+    "surfaces": [
+        {
+            "type": "elliptic_cylinder",
+            "params": {"a": 1.0, "b": 1.0, "c": 1.0, "p": 1.0},
+            "transform": {"translation": [0, 0, 0], "rotation": [0, 0, 0, 1]},
+            "triangulationMethod": "parametric",
+            "uSteps": 40,
+            "vSteps": 40,
+            "mcResolution": 32
+        },
+        {
+            "type": "elliptic_cylinder",
+            "params": {"a": 1.0, "b": 1.0, "c": 1.0, "p": 1.0},
+            "transform": {
+                "translation": [0, 0, 0],
+                "rotation": [0, 0.7071067811865475, 0, 0.7071067811865476]
+            },
+            "triangulationMethod": "parametric",
+            "uSteps": 40,
+            "vSteps": 40,
+            "mcResolution": 32
+        }
+    ]
+}

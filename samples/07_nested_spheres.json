@@ -1,0 +1,28 @@
+{
+    "bbox": {
+        "min": [-3, -3, -3],
+        "max": [3, 3, 3]
+    },
+    "intersectionMethod": "bvh",
+    "notes": "Small R=1 sphere fully inside a R=2 sphere, both centred at origin. Expected: 0 segments — surfaces don't touch even though one contains the other.",
+    "surfaces": [
+        {
+            "type": "ellipsoid",
+            "params": {"a": 2.0, "b": 2.0, "c": 2.0, "p": 1.0},
+            "transform": {"translation": [0, 0, 0], "rotation": [0, 0, 0, 1]},
+            "triangulationMethod": "parametric",
+            "uSteps": 36,
+            "vSteps": 36,
+            "mcResolution": 32
+        },
+        {
+            "type": "ellipsoid",
+            "params": {"a": 1.0, "b": 1.0, "c": 1.0, "p": 1.0},
+            "transform": {"translation": [0, 0, 0], "rotation": [0, 0, 0, 1]},
+            "triangulationMethod": "parametric",
+            "uSteps": 30,
+            "vSteps": 30,
+            "mcResolution": 32
+        }
+    ]
+}

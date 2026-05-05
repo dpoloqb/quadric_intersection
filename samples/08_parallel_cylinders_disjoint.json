@@ -1,0 +1,28 @@
+{
+    "bbox": {
+        "min": [-2, -2, -3],
+        "max": [6, 2, 3]
+    },
+    "intersectionMethod": "bvh",
+    "notes": "Two R=1 cylinders, both with axis along Z, separated by 4 units in X. Expected: 0 segments — parallel non-touching cylinders.",
+    "surfaces": [
+        {
+            "type": "elliptic_cylinder",
+            "params": {"a": 1.0, "b": 1.0, "c": 1.0, "p": 1.0},
+            "transform": {"translation": [0, 0, 0], "rotation": [0, 0, 0, 1]},
+            "triangulationMethod": "parametric",
+            "uSteps": 32,
+            "vSteps": 24,
+            "mcResolution": 32
+        },
+        {
+            "type": "elliptic_cylinder",
+            "params": {"a": 1.0, "b": 1.0, "c": 1.0, "p": 1.0},
+            "transform": {"translation": [4, 0, 0], "rotation": [0, 0, 0, 1]},
+            "triangulationMethod": "parametric",
+            "uSteps": 32,
+            "vSteps": 24,
+            "mcResolution": 32
+        }
+    ]
+}

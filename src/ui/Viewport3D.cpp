@@ -1,6 +1,10 @@
 #include "Viewport3D.hpp"
 
+#include <QFont>
 #include <QMouseEvent>
+#include <QPainter>
+#include <QPointF>
+#include <QVector4D>
 #include <QWheelEvent>
 #include <QtMath>
 #include <algorithm>
@@ -67,6 +71,14 @@ void main() {
 }
 )";
 
+// X red, Y green, Z blue — standard 3D-tooling convention.
+const std::array<QColor, 3> kAxisColors = {
+    QColor(230, 90, 90, 230),
+    QColor(100, 210, 100, 230),
+    QColor(120, 160, 255, 230),
+};
+const std::array<const char*, 3> kAxisLabels = {"X", "Y", "Z"};
+
 QColor defaultMeshColor(int index) {
     static const std::array<QColor, 6> palette = {
         QColor(220, 90, 90, 96),
@@ -92,7 +104,7 @@ Viewport3D::~Viewport3D() {
     meshes_.clear();
     polylines_.clear();
     bboxLines_.reset();
-    axesLines_.reset();
+    for (auto& a : axes_) a.reset();
     meshProgram_.reset();
     lineProgram_.reset();
     doneCurrent();
@@ -171,7 +183,7 @@ void Viewport3D::initializeGL() {
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glClearColor(0.10f, 0.10f, 0.13f, 1.0f);
+    glClearColor(0.07f, 0.07f, 0.10f, 1.0f);
 
     meshProgram_ = std::make_unique<QOpenGLShaderProgram>();
     meshProgram_->addShaderFromSourceCode(QOpenGLShader::Vertex, kMeshVS);
@@ -198,6 +210,7 @@ void Viewport3D::paintGL() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     drawMeshes();
     drawLines();
+    drawAxisLabels();  // QPainter overlay; must come after all GL draws.
 }
 
 void Viewport3D::drawMeshes() {
@@ -245,7 +258,9 @@ void Viewport3D::drawLines() {
 
     // Bbox + axes first so polylines render on top.
     if (bboxLines_) drawOne(*bboxLines_, GL_LINES);
-    if (axesLines_) drawOne(*axesLines_, GL_LINES);
+    for (auto& a : axes_) {
+        if (a) drawOne(*a, GL_LINES);
+    }
     for (auto& p : polylines_) drawOne(*p, GL_LINE_STRIP);
 
     lineProgram_->release();
@@ -255,7 +270,9 @@ void Viewport3D::uploadAll() {
     for (auto& m : meshes_) uploadOneMesh(*m);
     for (auto& p : polylines_) uploadOneLines(*p);
     if (bboxLines_) uploadOneLines(*bboxLines_);
-    if (axesLines_) uploadOneLines(*axesLines_);
+    for (auto& a : axes_) {
+        if (a) uploadOneLines(*a);
+    }
 }
 
 void Viewport3D::uploadOneMesh(GpuMesh& m) {
@@ -292,7 +309,7 @@ void Viewport3D::uploadOneLines(GpuLines& l) {
 void Viewport3D::rebuildBboxAndAxes() {
     if (!bboxValid_) {
         bboxLines_.reset();
-        axesLines_.reset();
+        for (auto& a : axes_) a.reset();
         return;
     }
     if (!bboxLines_) bboxLines_ = std::make_unique<GpuLines>();
@@ -302,15 +319,14 @@ void Viewport3D::rebuildBboxAndAxes() {
     bboxLines_->lineWidth = 1.0f;
     if (initialized_) uploadOneLines(*bboxLines_);
 
-    if (!axesLines_) axesLines_ = std::make_unique<GpuLines>();
-    axesLines_->positions = axesLines(bbox_);
-    axesLines_->vertexCount = static_cast<GLsizei>(axesLines_->positions.size() / 3);
-    // Axes get a colour-per-axis effect by drawing X/Y/Z separately would
-    // require split buffers; here we use a neutral bright colour and rely on
-    // the user knowing the orientation from interaction.
-    axesLines_->color = QColor(220, 220, 80, 220);
-    axesLines_->lineWidth = 2.0f;
-    if (initialized_) uploadOneLines(*axesLines_);
+    for (int axis = 0; axis < 3; ++axis) {
+        if (!axes_[axis]) axes_[axis] = std::make_unique<GpuLines>();
+        axes_[axis]->positions = axisLine(axis, bbox_);
+        axes_[axis]->vertexCount = static_cast<GLsizei>(axes_[axis]->positions.size() / 3);
+        axes_[axis]->color = kAxisColors[axis];
+        axes_[axis]->lineWidth = 2.0f;
+        if (initialized_) uploadOneLines(*axes_[axis]);
+    }
 }
 
 void Viewport3D::mousePressEvent(QMouseEvent* e) {
@@ -404,23 +420,85 @@ std::vector<float> Viewport3D::bboxWireframe(const qi::geometry::BoundingBox& b)
     return out;
 }
 
-std::vector<float> Viewport3D::axesLines(const qi::geometry::BoundingBox& b) {
-    const auto centre = b.center();
-    const float reach = static_cast<float>(b.diagonal()) * 0.5f;
-    auto append = [&](std::vector<float>& dst, double x, double y, double z) {
-        dst.push_back(static_cast<float>(x));
-        dst.push_back(static_cast<float>(y));
-        dst.push_back(static_cast<float>(z));
+namespace {
+
+// Axes anchor at the world origin (0,0,0) and extend both ±axis. Reach per
+// direction is half the bbox diagonal so axes always poke out of the box on
+// the far side regardless of where the origin sits relative to the box.
+double axisReach(const qi::geometry::BoundingBox& b) { return b.diagonal() * 0.55; }
+
+// Endpoints (negTip, posTip) of axis `i` (0=X, 1=Y, 2=Z) in world space.
+// The arrow / label is drawn at posTip; the line itself spans both ends.
+std::pair<std::array<double, 3>, std::array<double, 3>> axisEndpoints(
+    int axis, const qi::geometry::BoundingBox& b) {
+    const double reach = axisReach(b);
+    std::array<double, 3> negTip = {0.0, 0.0, 0.0};
+    std::array<double, 3> posTip = {0.0, 0.0, 0.0};
+    negTip[axis] = -reach;
+    posTip[axis] = +reach;
+    return {negTip, posTip};
+}
+
+}  // namespace
+
+std::vector<float> Viewport3D::axisLine(int axis, const qi::geometry::BoundingBox& b) {
+    const auto [from, to] = axisEndpoints(axis, b);
+    return {static_cast<float>(from[0]), static_cast<float>(from[1]), static_cast<float>(from[2]),
+            static_cast<float>(to[0]),   static_cast<float>(to[1]),   static_cast<float>(to[2])};
+}
+
+void Viewport3D::drawAxisLabels() {
+    if (!bboxValid_) return;
+
+    const QMatrix4x4 viewProj = projection_ * camera_->viewMatrix();
+    const float W = static_cast<float>(width());
+    const float H = static_cast<float>(height());
+
+    auto project = [&](const std::array<double, 3>& p, QPointF& out) -> bool {
+        const QVector4D clip =
+            viewProj * QVector4D(static_cast<float>(p[0]), static_cast<float>(p[1]),
+                                 static_cast<float>(p[2]), 1.0f);
+        if (clip.w() <= 0.0f) return false;  // behind camera
+        out = QPointF((clip.x() / clip.w() * 0.5f + 0.5f) * W,
+                      (1.0f - (clip.y() / clip.w() * 0.5f + 0.5f)) * H);
+        return true;
     };
-    std::vector<float> out;
-    out.reserve(18);
-    append(out, centre.x() - reach, centre.y(), centre.z());
-    append(out, centre.x() + reach, centre.y(), centre.z());
-    append(out, centre.x(), centre.y() - reach, centre.z());
-    append(out, centre.x(), centre.y() + reach, centre.z());
-    append(out, centre.x(), centre.y(), centre.z() - reach);
-    append(out, centre.x(), centre.y(), centre.z() + reach);
-    return out;
+
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::TextAntialiasing);
+    QFont font = painter.font();
+    font.setBold(true);
+    font.setPointSize(11);
+    painter.setFont(font);
+
+    constexpr double kArrowLen = 12.0;       // pixels
+    constexpr double kArrowHalfWidth = 4.5;  // pixels
+
+    for (int axis = 0; axis < 3; ++axis) {
+        const auto [negTipW, posTipW] = axisEndpoints(axis, bbox_);
+        QPointF tipS, negS;
+        if (!project(posTipW, tipS) || !project(negTipW, negS)) continue;
+
+        QPointF dir = tipS - negS;
+        const double dlen = std::hypot(dir.x(), dir.y());
+        if (dlen < 1e-3) continue;
+        dir /= dlen;
+        const QPointF perp(-dir.y(), dir.x());
+
+        // Arrowhead: filled triangle, tip at tipS, base perpendicular to dir.
+        const QPointF base = tipS - dir * kArrowLen;
+        QPolygonF tri;
+        tri << tipS << (base + perp * kArrowHalfWidth) << (base - perp * kArrowHalfWidth);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(kAxisColors[axis]);
+        painter.drawPolygon(tri);
+
+        // Label past the arrow tip in the same direction.
+        painter.setPen(kAxisColors[axis]);
+        const QPointF labelPos = tipS + dir * 6.0 + perp * (-2.0);
+        painter.drawText(labelPos, kAxisLabels[axis]);
+    }
 }
 
 }  // namespace qi::ui

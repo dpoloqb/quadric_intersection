@@ -1,0 +1,28 @@
+{
+    "bbox": {
+        "min": [-3, -3, -2],
+        "max": [3, 3, 6]
+    },
+    "intersectionMethod": "bvh",
+    "notes": "Elliptic paraboloid z = x^2 + y^2 plus a very flat ellipsoid acting as a horizontal plane near z=2. Expected: a circle x^2+y^2 = 2 at z=2.",
+    "surfaces": [
+        {
+            "type": "elliptic_paraboloid",
+            "params": {"a": 1.0, "b": 1.0, "c": 1.0, "p": 1.0},
+            "transform": {"translation": [0, 0, 0], "rotation": [0, 0, 0, 1]},
+            "triangulationMethod": "parametric",
+            "uSteps": 40,
+            "vSteps": 40,
+            "mcResolution": 32
+        },
+        {
+            "type": "ellipsoid",
+            "params": {"a": 5.0, "b": 5.0, "c": 0.05, "p": 1.0},
+            "transform": {"translation": [0, 0, 2], "rotation": [0, 0, 0, 1]},
+            "triangulationMethod": "parametric",
+            "uSteps": 40,
+            "vSteps": 12,
+            "mcResolution": 32
+        }
+    ]
+}

@@ -8,6 +8,7 @@
 #include <QOpenGLVertexArrayObject>
 #include <QOpenGLWidget>
 #include <QPoint>
+#include <array>
 #include <memory>
 #include <vector>
 
@@ -74,7 +75,9 @@ private:
     static std::vector<float> meshToFlatAttribs(const qi::mesh::Mesh& mesh);
     static std::vector<float> polylineToPositions(const qi::mesh::Polyline& poly);
     static std::vector<float> bboxWireframe(const qi::geometry::BoundingBox& b);
-    static std::vector<float> axesLines(const qi::geometry::BoundingBox& b);
+    // Single XYZ axis as a line segment through the bbox centre. `axis`: 0=X, 1=Y, 2=Z.
+    static std::vector<float> axisLine(int axis, const qi::geometry::BoundingBox& b);
+    void drawAxisLabels();
 
     std::unique_ptr<QOpenGLShaderProgram> meshProgram_;
     std::unique_ptr<QOpenGLShaderProgram> lineProgram_;
@@ -82,7 +85,7 @@ private:
     std::vector<std::unique_ptr<GpuMesh>> meshes_;
     std::vector<std::unique_ptr<GpuLines>> polylines_;
     std::unique_ptr<GpuLines> bboxLines_;
-    std::unique_ptr<GpuLines> axesLines_;
+    std::array<std::unique_ptr<GpuLines>, 3> axes_;  // X, Y, Z (red, green, blue)
 
     qi::geometry::BoundingBox bbox_;
     bool bboxValid_ = false;
