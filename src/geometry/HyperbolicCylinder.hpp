@@ -19,6 +19,7 @@ public:
     std::pair<double, double> vRange() const override;
     std::string typeName() const override { return "hyperbolic_cylinder"; }
     std::unique_ptr<Quadric> clone() const override;
+    std::vector<double> uDiscontinuities() const override { return {0.0}; }
 
 private:
     double a_;

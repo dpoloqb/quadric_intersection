@@ -21,6 +21,9 @@ public:
     std::pair<double, double> vRange() const override;
     std::string typeName() const override { return "hyperboloid_two_sheet"; }
     std::unique_ptr<Quadric> clone() const override;
+    std::vector<double> vDiscontinuities() const override { return {0.0}; }
+    std::optional<Vec3> closingApexBelowV(double d) const override;
+    std::optional<Vec3> closingApexAboveV(double d) const override;
 
 private:
     double a_;

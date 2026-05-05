@@ -90,6 +90,25 @@ Mesh ParametricTriangulator::triangulate(const Quadric& quadric, const BoundingB
     const auto [uMin, uMax] = quadric.uRange();
     const auto [vMin, vMax] = quadric.vRange();
 
+    const auto uDiscs = quadric.uDiscontinuities();
+    const auto vDiscs = quadric.vDiscontinuities();
+
+    // True if some discontinuity falls inside the half-open interval
+    // `(lo, hi]`. The half-open shape matches the right-continuous
+    // convention used by `HyperboloidTwoSheet` / `HyperbolicCylinder`:
+    // `parametric(0)` returns the upper sheet / right branch, while
+    // `parametric(0-)` returns the lower / left side. So a quad spans the
+    // discontinuity iff the discontinuity is strictly above `lo` and at
+    // most equal to `hi`.
+    auto crossesDisc = [](double a, double b, const std::vector<double>& discs) {
+        const double lo = std::min(a, b);
+        const double hi = std::max(a, b);
+        for (double d : discs) {
+            if (d > lo && d <= hi) return true;
+        }
+        return false;
+    };
+
     // Pre-compute (us+1) × (vs+1) grid of parametric points.
     std::vector<Vec3> grid(static_cast<std::size_t>(us + 1) * (vs + 1));
     auto at = [&](int i, int j) -> Vec3& {
@@ -104,8 +123,17 @@ Mesh ParametricTriangulator::triangulate(const Quadric& quadric, const BoundingB
     }
 
     // Each quad → 2 triangles → clip against bbox → fan-triangulate the result.
+    // Quads that span a discontinuity in either parameter are skipped to
+    // avoid bridging two disconnected sheets / branches.
     for (int j = 0; j < vs; ++j) {
+        const double vLo = vMin + (vMax - vMin) * static_cast<double>(j) / vs;
+        const double vHi = vMin + (vMax - vMin) * static_cast<double>(j + 1) / vs;
+        if (crossesDisc(vLo, vHi, vDiscs)) continue;
         for (int i = 0; i < us; ++i) {
+            const double uLo = uMin + (uMax - uMin) * static_cast<double>(i) / us;
+            const double uHi = uMin + (uMax - uMin) * static_cast<double>(i + 1) / us;
+            if (crossesDisc(uLo, uHi, uDiscs)) continue;
+
             const Vec3 p00 = at(i,     j    );
             const Vec3 p10 = at(i + 1, j    );
             const Vec3 p01 = at(i,     j + 1);
@@ -113,6 +141,78 @@ Mesh ParametricTriangulator::triangulate(const Quadric& quadric, const BoundingB
 
             emitFan(clipTriangleAgainstBbox(p00, p10, p11, bbox), out);
             emitFan(clipTriangleAgainstBbox(p00, p11, p01, bbox), out);
+        }
+    }
+
+    // Close any sheet that ends adjacent to a discontinuity but lacks an
+    // apex point in the grid (e.g. the lower sheet of HyperboloidTwoSheet,
+    // since `parametric(u, 0)` is right-continuous and returns the *upper*
+    // apex). The quadric supplies a synthetic apex via `closingApex*`;
+    // we fan it to the nearest-on-that-side ring.
+    auto vAt = [&](int j) { return vMin + (vMax - vMin) * j / vs; };
+    auto uAt = [&](int i) { return uMin + (uMax - uMin) * i / us; };
+
+    for (double d : vDiscs) {
+        int jBelow = -1;
+        for (int j = 0; j <= vs; ++j) {
+            if (vAt(j) < d) jBelow = j;
+        }
+        if (jBelow >= 0) {
+            if (auto apex = quadric.closingApexBelowV(d)) {
+                for (int i = 0; i < us; ++i) {
+                    if (crossesDisc(uAt(i), uAt(i + 1), uDiscs)) continue;
+                    emitFan(clipTriangleAgainstBbox(at(i, jBelow), at(i + 1, jBelow),
+                                                   *apex, bbox),
+                            out);
+                }
+            }
+        }
+
+        int jAbove = vs + 1;
+        for (int j = vs; j >= 0; --j) {
+            if (vAt(j) > d) jAbove = j;
+        }
+        if (jAbove <= vs) {
+            if (auto apex = quadric.closingApexAboveV(d)) {
+                for (int i = 0; i < us; ++i) {
+                    if (crossesDisc(uAt(i), uAt(i + 1), uDiscs)) continue;
+                    emitFan(clipTriangleAgainstBbox(*apex, at(i + 1, jAbove),
+                                                   at(i, jAbove), bbox),
+                            out);
+                }
+            }
+        }
+    }
+
+    for (double d : uDiscs) {
+        int iBelow = -1;
+        for (int i = 0; i <= us; ++i) {
+            if (uAt(i) < d) iBelow = i;
+        }
+        if (iBelow >= 0) {
+            if (auto apex = quadric.closingApexBelowU(d)) {
+                for (int j = 0; j < vs; ++j) {
+                    if (crossesDisc(vAt(j), vAt(j + 1), vDiscs)) continue;
+                    emitFan(clipTriangleAgainstBbox(at(iBelow, j), at(iBelow, j + 1),
+                                                   *apex, bbox),
+                            out);
+                }
+            }
+        }
+
+        int iAbove = us + 1;
+        for (int i = us; i >= 0; --i) {
+            if (uAt(i) > d) iAbove = i;
+        }
+        if (iAbove <= us) {
+            if (auto apex = quadric.closingApexAboveU(d)) {
+                for (int j = 0; j < vs; ++j) {
+                    if (crossesDisc(vAt(j), vAt(j + 1), vDiscs)) continue;
+                    emitFan(clipTriangleAgainstBbox(*apex, at(iAbove, j + 1),
+                                                   at(iAbove, j), bbox),
+                            out);
+                }
+            }
         }
     }
 

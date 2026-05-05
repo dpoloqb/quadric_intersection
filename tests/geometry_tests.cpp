@@ -317,6 +317,29 @@ TEST(HyperbolicCylinderTest, BothBranchesReached) {
     EXPECT_NEAR(cyl.implicit(left), 0.0, qi::test::kEpsTight);
 }
 
+// Each branch of the hyperbolic cylinder is one continuous curve that sweeps
+// y from -∞ to +∞ as the on-branch parameter ranges over R. An earlier bug
+// used `t = std::abs(u)` which collapsed both halves and only rendered y ≥ 0.
+// Verify both halves of both branches are reachable.
+TEST(HyperbolicCylinderTest, BothHalvesOfEachBranchReached) {
+    HyperbolicCylinder cyl(1.0, 1.0);
+    const auto [uMin, uMax] = cyl.uRange();
+    bool rightUpper = false, rightLower = false;
+    bool leftUpper = false, leftLower = false;
+    for (int i = 0; i <= 32; ++i) {
+        const double u = uMin + (uMax - uMin) * i / 32.0;
+        const Vec3 p = cyl.parametric(u, 0.0);
+        if (p.x() > 0.5 && p.y() > 0.5) rightUpper = true;
+        if (p.x() > 0.5 && p.y() < -0.5) rightLower = true;
+        if (p.x() < -0.5 && p.y() > 0.5) leftUpper = true;
+        if (p.x() < -0.5 && p.y() < -0.5) leftLower = true;
+    }
+    EXPECT_TRUE(rightUpper);
+    EXPECT_TRUE(rightLower);
+    EXPECT_TRUE(leftUpper);
+    EXPECT_TRUE(leftLower);
+}
+
 TEST(HyperbolicCylinderTest, TransformDoesNotBreakConsistency) {
     HyperbolicCylinder cyl(2.0, 3.0);
     cyl.setTransform(makeTestTransform());

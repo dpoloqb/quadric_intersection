@@ -40,4 +40,14 @@ std::unique_ptr<Quadric> HyperboloidTwoSheet::clone() const {
     return copy;
 }
 
+std::optional<Vec3> HyperboloidTwoSheet::closingApexBelowV(double d) const {
+    if (std::abs(d) > 1e-12) return std::nullopt;
+    return transform_.apply(Vec3(0.0, 0.0, -c_));
+}
+
+std::optional<Vec3> HyperboloidTwoSheet::closingApexAboveV(double d) const {
+    if (std::abs(d) > 1e-12) return std::nullopt;
+    return transform_.apply(Vec3(0.0, 0.0, c_));
+}
+
 }  // namespace qi::geometry

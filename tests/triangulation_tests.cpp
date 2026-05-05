@@ -193,3 +193,75 @@ TEST(ParametricTriangulatorTest, HigherStepsGiveMoreTriangles) {
 
     EXPECT_GT(fine.triangleCount(), coarse.triangleCount());
 }
+
+// Discontinuity-aware triangulation: HyperboloidTwoSheet has two sheets
+// (z >= c upper, z <= -c lower) joined nowhere. Without the fix, the
+// parametric triangulator emits a "spike" of triangles bridging the two
+// sheets through z=0. The fix declares vDiscontinuities() = {0.0} and skips
+// quads that span the gap. Verify: no triangle has vertices on both sheets.
+TEST(ParametricTriangulatorTest, HyperboloidTwoSheetNoBridgeBetweenSheets) {
+    auto q = qi::geometry::createQuadric("hyperboloid_two_sheet", {1.0, 1.0, 1.0, 1.0});
+    BoundingBox bbox(Vec3(-5, -5, -5), Vec3(5, 5, 5));
+    Mesh m = ParametricTriangulator(ParametricParams{32, 32}).triangulate(*q, bbox);
+    ASSERT_GT(m.triangleCount(), 0u);
+
+    // Each sheet has |z| > c=1. After the fix, no triangle can have one
+    // vertex on the upper sheet and another on the lower. Allow a bit of
+    // slack near the threshold (clipping by bbox can move a vertex onto
+    // a face).
+    const double sheetThreshold = 0.5;  // safely below cosh(0)=1 for the bridge
+    int crossingTriangles = 0;
+    for (const auto& tri : m.triangles) {
+        const double z0 = m.vertices[tri[0]].z();
+        const double z1 = m.vertices[tri[1]].z();
+        const double z2 = m.vertices[tri[2]].z();
+        const bool anyUpper = z0 > sheetThreshold || z1 > sheetThreshold || z2 > sheetThreshold;
+        const bool anyLower = z0 < -sheetThreshold || z1 < -sheetThreshold || z2 < -sheetThreshold;
+        if (anyUpper && anyLower) ++crossingTriangles;
+    }
+    EXPECT_EQ(crossingTriangles, 0);
+}
+
+// After skipping the bridge quad, the lower sheet of HyperboloidTwoSheet
+// loses its apex (parametric(u, 0) returns the *upper* apex (0, 0, +c)).
+// The closingApexBelowV() API + triangulator fan must seal the lower sheet
+// at (0, 0, -c). Verify some triangle vertex sits at z ≈ -c on-axis, both
+// when the discontinuity falls on a grid line (vSteps even) and when it
+// does not (vSteps odd → upper apex also synthesized).
+TEST(ParametricTriangulatorTest, HyperboloidTwoSheetClosingApexFan) {
+    auto q = qi::geometry::createQuadric("hyperboloid_two_sheet", {1.0, 1.0, 1.0, 1.0});
+    BoundingBox bbox(Vec3(-5, -5, -5), Vec3(5, 5, 5));
+
+    for (int vSteps : {32, 33}) {
+        Mesh m = ParametricTriangulator(ParametricParams{32, vSteps}).triangulate(*q, bbox);
+        bool hasLowerApex = false;
+        bool hasUpperApex = false;
+        for (const auto& v : m.vertices) {
+            const double rxy = std::hypot(v.x(), v.y());
+            if (rxy < 1e-6 && std::abs(v.z() + 1.0) < 1e-6) hasLowerApex = true;
+            if (rxy < 1e-6 && std::abs(v.z() - 1.0) < 1e-6) hasUpperApex = true;
+        }
+        EXPECT_TRUE(hasLowerApex) << "vSteps=" << vSteps;
+        EXPECT_TRUE(hasUpperApex) << "vSteps=" << vSteps;
+    }
+}
+
+TEST(ParametricTriangulatorTest, HyperbolicCylinderNoBridgeBetweenBranches) {
+    auto q = qi::geometry::createQuadric("hyperbolic_cylinder", {1.0, 1.0, 1.0, 1.0});
+    BoundingBox bbox(Vec3(-5, -5, -5), Vec3(5, 5, 5));
+    Mesh m = ParametricTriangulator(ParametricParams{32, 32}).triangulate(*q, bbox);
+    ASSERT_GT(m.triangleCount(), 0u);
+
+    // Right branch x >= a=1, left x <= -1.
+    const double branchThreshold = 0.5;
+    int crossingTriangles = 0;
+    for (const auto& tri : m.triangles) {
+        const double x0 = m.vertices[tri[0]].x();
+        const double x1 = m.vertices[tri[1]].x();
+        const double x2 = m.vertices[tri[2]].x();
+        const bool anyRight = x0 > branchThreshold || x1 > branchThreshold || x2 > branchThreshold;
+        const bool anyLeft = x0 < -branchThreshold || x1 < -branchThreshold || x2 < -branchThreshold;
+        if (anyRight && anyLeft) ++crossingTriangles;
+    }
+    EXPECT_EQ(crossingTriangles, 0);
+}
