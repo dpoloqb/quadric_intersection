@@ -1,6 +1,7 @@
 #include "ExperimentTab.hpp"
 
 #include <QComboBox>
+#include <QFrame>
 #include <QFuture>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -12,6 +13,7 @@
 #include <QPushButton>
 #include <QSplitter>
 #include <QVBoxLayout>
+#include <QWidget>
 #include <QtConcurrent>
 
 #include <QFileDialog>
@@ -50,12 +52,29 @@ ExperimentTab::ExperimentTab(QWidget* parent) : QWidget(parent) {
     notesEdit_->setPlaceholderText(tr("notes (optional)"));
 
     runButton_ = new QPushButton(tr("Run"));
+    stopButton_ = new QPushButton(tr("Stop"));
+    stopButton_->setEnabled(false);
     auto* loadBtn = new QPushButton(tr("Load…"));
     auto* saveBtn = new QPushButton(tr("Save…"));
     progressBar_ = new QProgressBar;
     progressBar_->setRange(0, 1);
     progressBar_->setValue(0);
     progressBar_->setTextVisible(true);
+
+    // Edit-mode badge — visible only while editing an existing experiment.
+    editingBadge_ = new QWidget;
+    editingBadgeLabel_ = new QLabel;
+    auto* editingClearBtn = new QPushButton(tr("×"));
+    editingClearBtn->setFixedWidth(24);
+    editingClearBtn->setToolTip(tr("Stop editing (next Run will save as new)"));
+    auto* badgeLayout = new QHBoxLayout(editingBadge_);
+    badgeLayout->setContentsMargins(6, 2, 4, 2);
+    badgeLayout->addWidget(editingBadgeLabel_);
+    badgeLayout->addWidget(editingClearBtn);
+    editingBadge_->setVisible(false);
+    editingBadge_->setStyleSheet(
+        "QWidget { background: rgba(245, 166, 35, 30); "
+        "border: 1px solid rgba(245, 166, 35, 120); border-radius: 4px; }");
 
     auto* listColumn = new QWidget;
     auto* listLayout = new QVBoxLayout(listColumn);
@@ -79,7 +98,9 @@ ExperimentTab::ExperimentTab(QWidget* parent) : QWidget(parent) {
     bottomLayout->addWidget(notesEdit_, /*stretch=*/1);
     bottomLayout->addWidget(loadBtn);
     bottomLayout->addWidget(saveBtn);
+    bottomLayout->addWidget(editingBadge_);
     bottomLayout->addWidget(runButton_);
+    bottomLayout->addWidget(stopButton_);
 
     auto* main = new QVBoxLayout(this);
     auto* bboxBox = new QGroupBox(tr("Bounding box"));
@@ -98,6 +119,8 @@ ExperimentTab::ExperimentTab(QWidget* parent) : QWidget(parent) {
     connect(removeBtn, &QPushButton::clicked, this, &ExperimentTab::removeSelectedSurface);
     connect(duplicateBtn, &QPushButton::clicked, this, &ExperimentTab::duplicateSelectedSurface);
     connect(runButton_, &QPushButton::clicked, this, &ExperimentTab::runAsync);
+    connect(stopButton_, &QPushButton::clicked, this, &ExperimentTab::requestStop);
+    connect(editingClearBtn, &QPushButton::clicked, this, &ExperimentTab::clearEditingMode);
     connect(loadBtn, &QPushButton::clicked, this, [this]() {
         const QString path = QFileDialog::getOpenFileName(
             this, tr("Load experiment config"), QString(),
@@ -136,6 +159,7 @@ ExperimentTab::ExperimentTab(QWidget* parent) : QWidget(parent) {
 
 ExperimentTab::~ExperimentTab() {
     if (watcher_->isRunning()) {
+        cancelToken_.store(true, std::memory_order_relaxed);
         watcher_->waitForFinished();
     }
 }
@@ -226,18 +250,30 @@ ExperimentResult ExperimentTab::runSync() {
 
 void ExperimentTab::runAsync() {
     if (watcher_->isRunning()) return;
+    cancelToken_.store(false, std::memory_order_relaxed);
     runButton_->setEnabled(false);
+    stopButton_->setEnabled(true);
     progressBar_->setRange(0, 1);
     progressBar_->setValue(0);
 
     const ExperimentConfig cfg = buildConfig();
     auto future = QtConcurrent::run([this, cfg]() {
         ExperimentRunner runner;
-        return runner.run(cfg, [this](const QString& stage, int cur, int tot) {
-            emit progressFromWorker(stage, cur, tot);
-        });
+        return runner.run(
+            cfg,
+            [this](const QString& stage, int cur, int tot) {
+                emit progressFromWorker(stage, cur, tot);
+            },
+            &cancelToken_);
     });
     watcher_->setFuture(future);
+}
+
+void ExperimentTab::requestStop() {
+    if (!watcher_->isRunning()) return;
+    cancelToken_.store(true, std::memory_order_relaxed);
+    stopButton_->setEnabled(false);
+    progressBar_->setFormat(tr("stopping…"));
 }
 
 void ExperimentTab::onProgressUpdate(const QString& stage, int current, int total) {
@@ -250,15 +286,77 @@ void ExperimentTab::onProgressUpdate(const QString& stage, int current, int tota
 
 void ExperimentTab::onRunFinished() {
     runButton_->setEnabled(true);
+    stopButton_->setEnabled(false);
     auto result = watcher_->result();
+    if (result.cancelled) {
+        progressBar_->setRange(0, 1);
+        progressBar_->setValue(0);
+        progressBar_->setFormat(tr("stopped"));
+        emit experimentCancelled();
+        return;
+    }
+    int replacedId = 0;
+    if (editingExperimentId_ > 0 && repo_ != nullptr) {
+        if (repo_->deleteExperiment(editingExperimentId_)) {
+            replacedId = editingExperimentId_;
+        }
+        editingExperimentId_ = 0;
+        updateEditingBadge();
+    }
     int savedId = 0;
     if (repo_ != nullptr) {
         savedId = repo_->saveExperiment(result);
     }
+    if (replacedId > 0) emit experimentReplaced(replacedId);
     emit experimentFinished(savedId);
 }
 
+void ExperimentTab::loadExperimentForEditing(
+    const qi::experiment::ExperimentResult& exp) {
+    ExperimentConfig cfg;
+    cfg.bbox = exp.bbox;
+    cfg.notes = exp.notes;
+    cfg.intersectionMethod = exp.intersections.empty()
+                                 ? QStringLiteral("bvh")
+                                 : exp.intersections.front().intersectionMethod;
+    cfg.surfaces.reserve(exp.surfaces.size());
+    for (const auto& sr : exp.surfaces) {
+        SurfaceConfig sc;
+        sc.type = sr.type;
+        sc.params = sr.params;
+        sc.transform = sr.transform;
+        sc.triangulationMethod = sr.triangulationMethod;
+        sc.mcResolution = sr.mcResolution;
+        sc.uSteps = sr.uSteps;
+        sc.vSteps = sr.vSteps;
+        cfg.surfaces.push_back(std::move(sc));
+    }
+    applyConfig(cfg);
+    editingExperimentId_ = exp.id;
+    updateEditingBadge();
+}
+
+void ExperimentTab::clearEditingMode() {
+    editingExperimentId_ = 0;
+    updateEditingBadge();
+}
+
+void ExperimentTab::updateEditingBadge() {
+    if (editingExperimentId_ > 0) {
+        editingBadgeLabel_->setText(tr("editing #%1").arg(editingExperimentId_));
+        editingBadge_->setVisible(true);
+    } else {
+        editingBadge_->setVisible(false);
+    }
+}
+
 void ExperimentTab::applyConfig(const ExperimentConfig& cfg) {
+    // Loading a foreign config (JSON file or programmatic) drops edit-mode:
+    // the next Run will save as a new experiment. Callers that want to keep
+    // edit-mode (e.g. loadExperimentForEditing) reset editingExperimentId_
+    // afterwards.
+    editingExperimentId_ = 0;
+
     bboxWidget_->setBoundingBox(cfg.bbox);
 
     const int idx = intersectionMethodCombo_->findData(cfg.intersectionMethod);
@@ -269,13 +367,14 @@ void ExperimentTab::applyConfig(const ExperimentConfig& cfg) {
     surfaceList_->clear();
     if (cfg.surfaces.empty()) {
         addSurface();  // keep at least one
-        return;
+    } else {
+        surfaces_ = cfg.surfaces;
+        for (std::size_t i = 0; i < surfaces_.size(); ++i) {
+            surfaceList_->addItem(labelFor(static_cast<int>(i)));
+        }
+        surfaceList_->setCurrentRow(0);
     }
-    surfaces_ = cfg.surfaces;
-    for (std::size_t i = 0; i < surfaces_.size(); ++i) {
-        surfaceList_->addItem(labelFor(static_cast<int>(i)));
-    }
-    surfaceList_->setCurrentRow(0);
+    updateEditingBadge();
 }
 
 bool ExperimentTab::saveConfigToFile(const QString& path) const {

@@ -1,6 +1,5 @@
 #include "ResultsTab.hpp"
 
-#include <QDialog>
 #include <QFile>
 #include <QFileDialog>
 #include <QHBoxLayout>
@@ -15,7 +14,6 @@
 #include <QSqlQueryModel>
 #include <QTabWidget>
 #include <QTableView>
-#include <QTextEdit>
 #include <QTextStream>
 #include <QVBoxLayout>
 
@@ -92,7 +90,7 @@ ResultsTab::ResultsTab(QWidget* parent) : QWidget(parent) {
     styleTable(experimentsView_);
 
     auto* experimentsLayout = new QVBoxLayout(experimentsPage);
-    experimentsLayout->addWidget(new QLabel(tr("Double-click a row for details")));
+    experimentsLayout->addWidget(new QLabel(tr("Double-click a row to edit and re-run")));
     experimentsLayout->addWidget(experimentsView_, 1);
 
     innerTabs_->addTab(pairsPage, tr("Intersection pairs"));
@@ -235,57 +233,8 @@ bool ResultsTab::exportPairsToCsv(const QString& path) const {
 
 void ResultsTab::onExperimentDoubleClicked(const QModelIndex& index) {
     if (!index.isValid()) return;
-    const int row = index.row();
-    const int id = experimentsModel_->data(experimentsModel_->index(row, 0)).toInt();
-    const QString createdAt = experimentsModel_->data(experimentsModel_->index(row, 1)).toString();
-    const int surfacesCount = experimentsModel_->data(experimentsModel_->index(row, 2)).toInt();
-    const QString notes = experimentsModel_->data(experimentsModel_->index(row, 3)).toString();
-
-    QString details;
-    QTextStream s(&details);
-    s << "Experiment #" << id << "\n"
-      << "Created: " << createdAt << "\n"
-      << "Surfaces: " << surfacesCount << "\n"
-      << "Notes: " << (notes.isEmpty() ? QString("—") : notes) << "\n\n";
-
-    if (repo_ != nullptr) {
-        auto exp = repo_->loadExperiment(id);
-        if (exp.has_value()) {
-            s << "Bbox: ["
-              << exp->bbox.min().x() << ", " << exp->bbox.min().y() << ", "
-              << exp->bbox.min().z() << "] – ["
-              << exp->bbox.max().x() << ", " << exp->bbox.max().y() << ", "
-              << exp->bbox.max().z() << "]\n\n";
-            s << "Surfaces:\n";
-            for (const auto& sr : exp->surfaces) {
-                s << "  " << sr.indexInExperiment << ": " << sr.type
-                  << " (" << sr.triangulationMethod << ", "
-                  << sr.trianglesCount << " triangles, "
-                  << QString::number(sr.timeTriangulationMs, 'f', 2) << " ms)\n";
-            }
-            s << "\nIntersections:\n";
-            for (const auto& isec : exp->intersections) {
-                s << "  (" << isec.surface1Index << ", " << isec.surface2Index
-                  << ") via " << isec.intersectionMethod
-                  << ": " << isec.segmentsCount << " segments, "
-                  << isec.polylinesCount << " polylines, "
-                  << QString::number(isec.timeIntersectionMs, 'f', 3) << " ms\n";
-            }
-        }
-    }
-
-    QDialog dlg(const_cast<ResultsTab*>(this));
-    dlg.setWindowTitle(tr("Experiment %1").arg(id));
-    auto* layout = new QVBoxLayout(&dlg);
-    auto* text = new QTextEdit;
-    text->setReadOnly(true);
-    text->setPlainText(details);
-    layout->addWidget(text);
-    auto* close = new QPushButton(tr("Close"));
-    connect(close, &QPushButton::clicked, &dlg, &QDialog::accept);
-    layout->addWidget(close);
-    dlg.resize(500, 400);
-    dlg.exec();
+    const int id = experimentsModel_->data(experimentsModel_->index(index.row(), 0)).toInt();
+    if (id > 0) emit experimentEditRequested(id);
 }
 
 }  // namespace qi::ui

@@ -55,8 +55,35 @@ MainWindow::MainWindow(QWidget* parent)
                                              tr("Run completed (not persisted)"));
                 }
             });
+    connect(experimentTab_, &ExperimentTab::experimentCancelled, this,
+            [this]() {
+                QMessageBox::information(this, tr("Experiment stopped"),
+                                         tr("The experiment was stopped before completion. Nothing was saved."));
+            });
+    connect(experimentTab_, &ExperimentTab::experimentReplaced, this,
+            [this](int /*oldId*/) {
+                resultsTab_->refresh();
+                viewTab_->refreshExperimentList();
+            });
     connect(resultsTab_, &ResultsTab::experimentDeleted, this,
-            [this](int /*id*/) { viewTab_->refreshExperimentList(); });
+            [this](int id) {
+                if (experimentTab_->editingExperimentId() == id) {
+                    experimentTab_->clearEditingMode();
+                }
+                viewTab_->refreshExperimentList();
+            });
+    connect(resultsTab_, &ResultsTab::experimentEditRequested, this,
+            [this](int id) {
+                if (!repo_) return;
+                auto exp = repo_->loadExperiment(id);
+                if (!exp.has_value()) {
+                    QMessageBox::warning(this, tr("Open for editing"),
+                                         tr("Could not load experiment %1").arg(id));
+                    return;
+                }
+                experimentTab_->loadExperimentForEditing(*exp);
+                ui_->tabWidget->setCurrentWidget(ui_->experimentTab);
+            });
 }
 
 MainWindow::~MainWindow() = default;

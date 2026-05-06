@@ -50,6 +50,7 @@ public slots:
 
 signals:
     void experimentDeleted(int experimentId);
+    void experimentEditRequested(int experimentId);
 
 private slots:
     void onDeleteSelected();

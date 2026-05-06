@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <functional>
 
 #include <QString>
@@ -36,8 +37,15 @@ public:
     ExperimentRunner() = default;
 
     /// Run a single experiment. May be invoked from any thread.
+    ///
+    /// If `cancelToken` is non-null, the runner checks it at every stage
+    /// boundary (between triangulations, between intersection pairs). When the
+    /// token transitions to true, the runner stops as soon as it notices and
+    /// returns the partially-filled result with `ExperimentResult::cancelled`
+    /// set to true. The caller is expected to skip persistence in that case.
     ExperimentResult run(const ExperimentConfig& config,
-                         ProgressCallback onProgress = {});
+                         ProgressCallback onProgress = {},
+                         std::atomic<bool>* cancelToken = nullptr);
 };
 
 }  // namespace qi::experiment

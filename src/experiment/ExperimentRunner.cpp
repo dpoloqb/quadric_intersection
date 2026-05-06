@@ -40,11 +40,16 @@ double elapsedMs(std::chrono::steady_clock::time_point t0,
 }  // namespace
 
 ExperimentResult ExperimentRunner::run(const ExperimentConfig& config,
-                                       ProgressCallback onProgress) {
+                                       ProgressCallback onProgress,
+                                       std::atomic<bool>* cancelToken) {
     ExperimentResult result;
     result.createdAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     result.bbox = config.bbox;
     result.notes = config.notes;
+
+    const auto cancelled = [cancelToken]() {
+        return cancelToken != nullptr && cancelToken->load(std::memory_order_relaxed);
+    };
 
     const int n = static_cast<int>(config.surfaces.size());
     const int totalIntersections = n * (n - 1) / 2;
@@ -56,6 +61,10 @@ ExperimentResult ExperimentRunner::run(const ExperimentConfig& config,
     meshes.reserve(static_cast<std::size_t>(n));
 
     for (int i = 0; i < n; ++i) {
+        if (cancelled()) {
+            result.cancelled = true;
+            return result;
+        }
         const auto& sc = config.surfaces[i];
         if (onProgress) {
             onProgress(QString("triangulating %1 (%2/%3)")
@@ -99,6 +108,10 @@ ExperimentResult ExperimentRunner::run(const ExperimentConfig& config,
     // Step 2: pairwise intersect.
     for (int i = 0; i < n; ++i) {
         for (int j = i + 1; j < n; ++j) {
+            if (cancelled()) {
+                result.cancelled = true;
+                return result;
+            }
             if (onProgress) {
                 onProgress(QString("intersecting (%1, %2)").arg(i).arg(j),
                            currentStep, totalSteps);

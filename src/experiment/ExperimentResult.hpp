@@ -43,6 +43,7 @@ struct ExperimentResult {
     QString notes;
     std::vector<SurfaceRecord> surfaces;
     std::vector<IntersectionRecord> intersections;
+    bool cancelled = false;  // set by runner when stopped via cancelToken
 
     int surfacesCount() const { return static_cast<int>(surfaces.size()); }
 };
