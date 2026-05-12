@@ -2,10 +2,15 @@
 
 #include <QString>
 #include <QWidget>
+#include <vector>
+
+#include "Mesh.hpp"
 
 QT_BEGIN_NAMESPACE
+class QComboBox;
 class QListWidget;
 class QListWidgetItem;
+class QSpinBox;
 QT_END_NAMESPACE
 
 namespace qi::storage {
@@ -38,13 +43,22 @@ public slots:
 
 private slots:
     void onExperimentSelected();
+    void onBvhSurfaceChanged(int index);
+    void onBvhDepthChanged(int value);
 
 private:
+    void rebuildBvhForSelectedSurface();
+
     QListWidget* experimentList_;
     Viewport3D* viewport_;
+    QComboBox* bvhSurfaceCombo_;
+    QSpinBox* bvhDepthSpin_;
     qi::storage::ExperimentRepository* repo_ = nullptr;
     int loadedMeshCount_ = 0;
     int loadedPolylineCount_ = 0;
+    // Meshes from the currently displayed experiment, kept so the BVH can be
+    // (re)built on demand when the user picks a surface from the BVH combo.
+    std::vector<qi::mesh::Mesh> currentMeshes_;
 };
 
 }  // namespace qi::ui

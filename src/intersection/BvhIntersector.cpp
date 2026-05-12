@@ -75,6 +75,16 @@ public:
         queryRecursive(0, q, outTriIdx);
     }
 
+    // Walk the tree in pre-order, collecting one entry per node with its
+    // world-space AABB and depth. Used by visualization code only.
+    std::vector<BvhVizNode> enumerateNodes() const {
+        std::vector<BvhVizNode> out;
+        if (nodes_.empty()) return out;
+        out.reserve(nodes_.size());
+        enumerateRecursive(0, 0, out);
+        return out;
+    }
+
 private:
     void buildRecursive(std::int32_t nodeIdx, std::size_t triBegin, std::size_t triEnd) {
         BoundingBox bbox = triBboxes_[triIndices_[triBegin]];
@@ -117,6 +127,16 @@ private:
         buildRecursive(rightIdx, mid, triEnd);
     }
 
+    void enumerateRecursive(std::int32_t nodeIdx, int depth,
+                            std::vector<BvhVizNode>& out) const {
+        const BvhNode& node = nodes_[nodeIdx];
+        out.push_back({node.bbox, depth, node.isLeaf()});
+        if (!node.isLeaf()) {
+            enumerateRecursive(node.left, depth + 1, out);
+            enumerateRecursive(node.right, depth + 1, out);
+        }
+    }
+
     void queryRecursive(std::int32_t nodeIdx,
                         const BoundingBox& q,
                         std::vector<std::size_t>& out) const {
@@ -141,6 +161,12 @@ private:
 };
 
 }  // namespace
+
+std::vector<BvhVizNode> buildBvhForVisualization(const Mesh& mesh) {
+    Bvh bvh;
+    bvh.build(mesh);
+    return bvh.enumerateNodes();
+}
 
 std::vector<Segment> BvhIntersector::findSegments(const Mesh& a, const Mesh& b) {
     Bvh bvh;

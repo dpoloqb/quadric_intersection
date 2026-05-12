@@ -89,6 +89,18 @@ On the first launch `experiments.db` (SQLite) is created.
   <sub><i>The same scene from a different angle — the orbital camera is driven by LMB-drag (rotate), wheel (zoom) and RMB-drag (pan).</i></sub>
 </p>
 
+<p>
+  <img src="docs/images/bvh.jpg" alt="BVH visualization" width="720">
+  <br>
+  <sub><i>Visualization of the BVH tree built over the mesh triangles.</i></sub>
+</p>
+
+<p>
+  <img src="docs/images/experimentbvh.jpg" alt="Experiment with BVH" width="720">
+  <br>
+  <sub><i>An experiment using the BVH accelerator for intersection search.</i></sub>
+</p>
+
 ## Usage
 
 ### «Experiment» tab

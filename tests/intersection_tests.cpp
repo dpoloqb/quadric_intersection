@@ -541,6 +541,67 @@ TEST(BvhIntersectorTest, FasterThanNaiveOnIntersectingSpheres) {
     EXPECT_LT(bvhMs, naiveMs);
 }
 
+// ---- BVH visualization helper ----
+
+TEST(BuildBvhForVisualizationTest, EmptyMeshReturnsNoNodes) {
+    Mesh empty;
+    EXPECT_TRUE(qi::intersection::buildBvhForVisualization(empty).empty());
+}
+
+TEST(BuildBvhForVisualizationTest, RootEnclosesEveryTriangle) {
+    Ellipsoid q(1.0, 1.0, 1.0);
+    BoundingBox bbox(Vec3(-2, -2, -2), Vec3(2, 2, 2));
+    Mesh m = triangulateParametric(q, bbox, 24, 24);
+    ASSERT_GT(m.triangleCount(), 0u);
+
+    auto nodes = qi::intersection::buildBvhForVisualization(m);
+    ASSERT_FALSE(nodes.empty());
+
+    // First entry is the root (depth 0); its AABB must contain every vertex.
+    const auto& root = nodes.front();
+    EXPECT_EQ(root.depth, 0);
+    const double eps = 1e-9;
+    for (const auto& v : m.vertices) {
+        EXPECT_GE(v.x(), root.bbox.min().x() - eps);
+        EXPECT_GE(v.y(), root.bbox.min().y() - eps);
+        EXPECT_GE(v.z(), root.bbox.min().z() - eps);
+        EXPECT_LE(v.x(), root.bbox.max().x() + eps);
+        EXPECT_LE(v.y(), root.bbox.max().y() + eps);
+        EXPECT_LE(v.z(), root.bbox.max().z() + eps);
+    }
+}
+
+TEST(BuildBvhForVisualizationTest, ChildAabbsLieInsideParent) {
+    // Indirect check via the global invariant: every non-root node's AABB
+    // must lie inside the AABB of *some* node at depth-1. (Pre-order traversal
+    // doesn't expose parent links directly.)
+    Ellipsoid q(1.0, 1.0, 1.0);
+    BoundingBox bbox(Vec3(-2, -2, -2), Vec3(2, 2, 2));
+    Mesh m = triangulateParametric(q, bbox, 16, 16);
+    auto nodes = qi::intersection::buildBvhForVisualization(m);
+    ASSERT_GT(nodes.size(), 1u);
+
+    const double eps = 1e-9;
+    for (const auto& n : nodes) {
+        if (n.depth == 0) continue;
+        bool found = false;
+        for (const auto& parent : nodes) {
+            if (parent.depth != n.depth - 1) continue;
+            if (n.bbox.min().x() >= parent.bbox.min().x() - eps &&
+                n.bbox.min().y() >= parent.bbox.min().y() - eps &&
+                n.bbox.min().z() >= parent.bbox.min().z() - eps &&
+                n.bbox.max().x() <= parent.bbox.max().x() + eps &&
+                n.bbox.max().y() <= parent.bbox.max().y() + eps &&
+                n.bbox.max().z() <= parent.bbox.max().z() + eps) {
+                found = true;
+                break;
+            }
+        }
+        EXPECT_TRUE(found) << "node at depth " << n.depth
+                           << " has no enclosing parent at depth " << n.depth - 1;
+    }
+}
+
 // ---- Triangle-triangle: integrative test (kept last) ----
 
 TEST(TriangleTriangleTest, ManyPermutationsProduceConsistentBoolean) {

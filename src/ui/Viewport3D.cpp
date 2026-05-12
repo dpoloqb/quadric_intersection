@@ -105,6 +105,7 @@ Viewport3D::~Viewport3D() {
     polylines_.clear();
     bboxLines_.reset();
     for (auto& a : axes_) a.reset();
+    bvhLines_.reset();
     meshProgram_.reset();
     lineProgram_.reset();
     doneCurrent();
@@ -115,11 +116,14 @@ void Viewport3D::clearScene() {
         makeCurrent();
         meshes_.clear();
         polylines_.clear();
+        bvhLines_.reset();
         doneCurrent();
     } else {
         meshes_.clear();
         polylines_.clear();
+        bvhLines_.reset();
     }
+    bvhNodes_.clear();
     update();
 }
 
@@ -150,6 +154,39 @@ void Viewport3D::addPolyline(const qi::mesh::Polyline& polyline, const QColor& c
         doneCurrent();
     }
     update();
+}
+
+void Viewport3D::setBvhNodes(const std::vector<qi::intersection::BvhVizNode>& nodes) {
+    bvhNodes_ = nodes;
+    if (initialized_) {
+        makeCurrent();
+        rebuildBvhLines();
+        doneCurrent();
+    } else {
+        rebuildBvhLines();
+    }
+    update();
+}
+
+void Viewport3D::setBvhDepthFilter(int depth) {
+    if (bvhDepthFilter_ == depth) return;
+    bvhDepthFilter_ = depth;
+    if (initialized_) {
+        makeCurrent();
+        rebuildBvhLines();
+        doneCurrent();
+    } else {
+        rebuildBvhLines();
+    }
+    update();
+}
+
+int Viewport3D::bvhMaxDepth() const {
+    int m = 0;
+    for (const auto& n : bvhNodes_) {
+        if (n.depth > m) m = n.depth;
+    }
+    return m;
 }
 
 void Viewport3D::setSceneBoundingBox(const qi::geometry::BoundingBox& bbox) {
@@ -261,6 +298,7 @@ void Viewport3D::drawLines() {
     for (auto& a : axes_) {
         if (a) drawOne(*a, GL_LINES);
     }
+    if (bvhLines_) drawOne(*bvhLines_, GL_LINES);
     for (auto& p : polylines_) drawOne(*p, GL_LINE_STRIP);
 
     lineProgram_->release();
@@ -273,6 +311,7 @@ void Viewport3D::uploadAll() {
     for (auto& a : axes_) {
         if (a) uploadOneLines(*a);
     }
+    if (bvhLines_) uploadOneLines(*bvhLines_);
 }
 
 void Viewport3D::uploadOneMesh(GpuMesh& m) {
@@ -304,6 +343,26 @@ void Viewport3D::uploadOneLines(GpuLines& l) {
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
     l.vbo.release();
     l.uploaded = true;
+}
+
+void Viewport3D::rebuildBvhLines() {
+    std::vector<float> positions;
+    positions.reserve(bvhNodes_.size() * 24 * 3);
+    for (const auto& n : bvhNodes_) {
+        if (bvhDepthFilter_ >= 0 && n.depth != bvhDepthFilter_) continue;
+        const auto wf = bboxWireframe(n.bbox);
+        positions.insert(positions.end(), wf.begin(), wf.end());
+    }
+    if (positions.empty()) {
+        bvhLines_.reset();
+        return;
+    }
+    if (!bvhLines_) bvhLines_ = std::make_unique<GpuLines>();
+    bvhLines_->positions = std::move(positions);
+    bvhLines_->vertexCount = static_cast<GLsizei>(bvhLines_->positions.size() / 3);
+    bvhLines_->color = QColor(255, 200, 60, 220);
+    bvhLines_->lineWidth = 1.0f;
+    if (initialized_) uploadOneLines(*bvhLines_);
 }
 
 void Viewport3D::rebuildBboxAndAxes() {

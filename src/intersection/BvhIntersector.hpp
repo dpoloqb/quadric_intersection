@@ -1,5 +1,9 @@
 #pragma once
 
+#include <vector>
+
+#include "BoundingBox.hpp"
+#include "Mesh.hpp"
 #include "MeshIntersector.hpp"
 
 namespace qi::intersection {
@@ -16,5 +20,18 @@ public:
 
     std::string methodName() const override { return "bvh"; }
 };
+
+// Visualization-only view of one BVH node: its world-space AABB plus where it
+// sits in the tree. Depth 0 is the root; `isLeaf` follows from the same
+// build parameters as `BvhIntersector::findSegments`.
+struct BvhVizNode {
+    qi::geometry::BoundingBox bbox;
+    int depth = 0;
+    bool isLeaf = false;
+};
+
+// Build a BVH over `mesh` (same parameters as the intersector — median split,
+// leaf size 8) and return its full node list. Empty mesh → empty result.
+std::vector<BvhVizNode> buildBvhForVisualization(const qi::mesh::Mesh& mesh);
 
 }  // namespace qi::intersection

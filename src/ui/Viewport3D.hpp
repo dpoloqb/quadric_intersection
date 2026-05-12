@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "BoundingBox.hpp"
+#include "BvhIntersector.hpp"
 #include "Mesh.hpp"
 #include "Polyline.hpp"
 
@@ -35,6 +36,13 @@ public:
     void addPolyline(const qi::mesh::Polyline& polyline, const QColor& colorOpaque);
     void setSceneBoundingBox(const qi::geometry::BoundingBox& bbox);
     void resetCamera();
+
+    // Replace the BVH overlay. Pass an empty vector to clear.
+    void setBvhNodes(const std::vector<qi::intersection::BvhVizNode>& nodes);
+    // Restrict overlay to nodes at exactly this depth; -1 = all depths.
+    void setBvhDepthFilter(int depth);
+    // Largest depth present in the current set; 0 if no BVH is loaded.
+    int bvhMaxDepth() const;
 
 protected:
     void initializeGL() override;
@@ -67,6 +75,7 @@ private:
 
     void uploadAll();
     void rebuildBboxAndAxes();
+    void rebuildBvhLines();
     void uploadOneMesh(GpuMesh& m);
     void uploadOneLines(GpuLines& l);
     void drawMeshes();
@@ -86,6 +95,10 @@ private:
     std::vector<std::unique_ptr<GpuLines>> polylines_;
     std::unique_ptr<GpuLines> bboxLines_;
     std::array<std::unique_ptr<GpuLines>, 3> axes_;  // X, Y, Z (red, green, blue)
+
+    std::vector<qi::intersection::BvhVizNode> bvhNodes_;
+    std::unique_ptr<GpuLines> bvhLines_;
+    int bvhDepthFilter_ = -1;
 
     qi::geometry::BoundingBox bbox_;
     bool bboxValid_ = false;

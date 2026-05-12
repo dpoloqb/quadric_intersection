@@ -1,10 +1,14 @@
 #include "ViewTab.hpp"
 
+#include <QComboBox>
 #include <QHBoxLayout>
+#include <QLabel>
 #include <QListWidget>
 #include <QListWidgetItem>
+#include <QSpinBox>
 #include <QSplitter>
 #include <QVBoxLayout>
+#include <QWidget>
 #include <memory>
 
 #include "BoundingBox.hpp"
@@ -82,9 +86,37 @@ ViewTab::ViewTab(QWidget* parent) : QWidget(parent) {
 
     viewport_ = new Viewport3D;
 
+    bvhSurfaceCombo_ = new QComboBox;
+    bvhSurfaceCombo_->addItem(tr("(off)"), -1);
+    bvhSurfaceCombo_->setMinimumContentsLength(20);
+
+    bvhDepthSpin_ = new QSpinBox;
+    bvhDepthSpin_->setRange(-1, 0);
+    bvhDepthSpin_->setValue(-1);
+    bvhDepthSpin_->setSpecialValueText(tr("all"));
+    bvhDepthSpin_->setToolTip(tr("BVH depth filter: -1 = show all levels, 0 = root, ..."));
+    bvhDepthSpin_->setEnabled(false);
+
+    auto* bvhBar = new QWidget;
+    auto* bvhBarLayout = new QHBoxLayout(bvhBar);
+    bvhBarLayout->setContentsMargins(4, 2, 4, 2);
+    bvhBarLayout->addWidget(new QLabel(tr("BVH:")));
+    bvhBarLayout->addWidget(bvhSurfaceCombo_);
+    bvhBarLayout->addSpacing(12);
+    bvhBarLayout->addWidget(new QLabel(tr("depth:")));
+    bvhBarLayout->addWidget(bvhDepthSpin_);
+    bvhBarLayout->addStretch(1);
+
+    auto* rightPane = new QWidget;
+    auto* rightLayout = new QVBoxLayout(rightPane);
+    rightLayout->setContentsMargins(0, 0, 0, 0);
+    rightLayout->setSpacing(0);
+    rightLayout->addWidget(bvhBar);
+    rightLayout->addWidget(viewport_, 1);
+
     auto* splitter = new QSplitter(Qt::Horizontal);
     splitter->addWidget(experimentList_);
-    splitter->addWidget(viewport_);
+    splitter->addWidget(rightPane);
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
 
@@ -94,6 +126,10 @@ ViewTab::ViewTab(QWidget* parent) : QWidget(parent) {
 
     connect(experimentList_, &QListWidget::currentRowChanged, this,
             [this](int) { onExperimentSelected(); });
+    connect(bvhSurfaceCombo_, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            &ViewTab::onBvhSurfaceChanged);
+    connect(bvhDepthSpin_, qOverload<int>(&QSpinBox::valueChanged), this,
+            &ViewTab::onBvhDepthChanged);
 }
 
 void ViewTab::setRepository(qi::storage::ExperimentRepository* repo) {
@@ -139,30 +175,73 @@ void ViewTab::loadExperiment(int id) {
     viewport_->setSceneBoundingBox(exp.bbox);
 
     // Re-triangulate each surface (meshes are not stored in the DB).
-    std::vector<qi::mesh::Mesh> meshes;
-    meshes.reserve(exp.surfaces.size());
+    currentMeshes_.clear();
+    currentMeshes_.reserve(exp.surfaces.size());
     for (std::size_t i = 0; i < exp.surfaces.size(); ++i) {
-        meshes.push_back(triangulateRecord(exp.surfaces[i], exp.bbox));
-        viewport_->addMesh(meshes.back(), paletteColor(static_cast<int>(i)));
+        currentMeshes_.push_back(triangulateRecord(exp.surfaces[i], exp.bbox));
+        viewport_->addMesh(currentMeshes_.back(), paletteColor(static_cast<int>(i)));
     }
 
     // Re-intersect every pair (i<j) per stored method.
+    loadedPolylineCount_ = 0;
     for (const auto& isec : exp.intersections) {
         if (isec.surface1Index < 0 ||
-            isec.surface1Index >= static_cast<int>(meshes.size()) ||
+            isec.surface1Index >= static_cast<int>(currentMeshes_.size()) ||
             isec.surface2Index < 0 ||
-            isec.surface2Index >= static_cast<int>(meshes.size())) {
+            isec.surface2Index >= static_cast<int>(currentMeshes_.size())) {
             continue;
         }
         const auto polys = intersectMeshes(
-            meshes[isec.surface1Index], meshes[isec.surface2Index],
+            currentMeshes_[isec.surface1Index], currentMeshes_[isec.surface2Index],
             isec.intersectionMethod);
         for (const auto& p : polys) {
             viewport_->addPolyline(p, QColor(255, 255, 255, 255));
         }
         loadedPolylineCount_ += static_cast<int>(polys.size());
     }
-    loadedMeshCount_ = static_cast<int>(meshes.size());
+    loadedMeshCount_ = static_cast<int>(currentMeshes_.size());
+
+    // Repopulate the BVH surface combo. Block its signal so the combo reset
+    // doesn't trigger a stale onBvhSurfaceChanged before we pick a default.
+    {
+        QSignalBlocker blocker(bvhSurfaceCombo_);
+        bvhSurfaceCombo_->clear();
+        bvhSurfaceCombo_->addItem(tr("(off)"), -1);
+        for (std::size_t i = 0; i < exp.surfaces.size(); ++i) {
+            bvhSurfaceCombo_->addItem(
+                QString("#%1 %2").arg(i).arg(exp.surfaces[i].type),
+                static_cast<int>(i));
+        }
+        bvhSurfaceCombo_->setCurrentIndex(0);  // (off)
+    }
+    rebuildBvhForSelectedSurface();
+}
+
+void ViewTab::onBvhSurfaceChanged(int /*index*/) {
+    rebuildBvhForSelectedSurface();
+}
+
+void ViewTab::onBvhDepthChanged(int value) {
+    viewport_->setBvhDepthFilter(value);
+}
+
+void ViewTab::rebuildBvhForSelectedSurface() {
+    const int surfaceIdx = bvhSurfaceCombo_->currentData().toInt();
+    if (surfaceIdx < 0 || surfaceIdx >= static_cast<int>(currentMeshes_.size())) {
+        viewport_->setBvhNodes({});
+        bvhDepthSpin_->setEnabled(false);
+        return;
+    }
+    auto nodes = qi::intersection::buildBvhForVisualization(currentMeshes_[surfaceIdx]);
+    viewport_->setBvhNodes(nodes);
+    const int maxDepth = viewport_->bvhMaxDepth();
+    {
+        QSignalBlocker blocker(bvhDepthSpin_);
+        bvhDepthSpin_->setRange(-1, maxDepth);
+        bvhDepthSpin_->setValue(-1);  // show all levels by default
+    }
+    bvhDepthSpin_->setEnabled(true);
+    viewport_->setBvhDepthFilter(-1);
 }
 
 }  // namespace qi::ui
